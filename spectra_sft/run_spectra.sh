@@ -39,19 +39,17 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Default config file and GPU count
 CONFIG_FILE="${1:-$SCRIPT_DIR/config/$CONFIG_FILE_NAME}"
 
-# Detect available GPUs if not specified
+# Detect available GPUs if not specified (default: all visible GPUs)
 if [ -n "$2" ]; then
     NUM_GPUS="$2"
 else
     if command -v nvidia-smi &>/dev/null; then
         NUM_GPUS=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
     else
-        echo -e "${YELLOW}Warning:${NC} nvidia-smi not found, defaulting to $2 GPUs"
+        echo -e "${YELLOW}Warning:${NC} nvidia-smi not found, defaulting to 2 GPUs"
         NUM_GPUS=2
     fi
 fi
-
-NUM_GPUS=2 # Test single GPU
 
 echo -e "${YELLOW}Project Root:${NC} $PROJECT_ROOT"
 echo -e "${YELLOW}Config File:${NC} $CONFIG_FILE"
@@ -77,18 +75,27 @@ fi
 
 # Set environment variables
 export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
-if [ -z "$CUDA_VISIBLE_DEVICES" ]; then
+# Keep launcher world size and visible devices consistent.
+# - If CUDA_VISIBLE_DEVICES is already set, honor it and optionally trim to NUM_GPUS.
+# - If not set, create 0..NUM_GPUS-1.
+if [ -n "$CUDA_VISIBLE_DEVICES" ]; then
+    IFS=',' read -r -a _VISIBLE_GPU_IDS <<< "$CUDA_VISIBLE_DEVICES"
+    if [ "${#_VISIBLE_GPU_IDS[@]}" -lt "$NUM_GPUS" ]; then
+        NUM_GPUS=${#_VISIBLE_GPU_IDS[@]}
+    fi
+    CUDA_VISIBLE_DEVICES=$(IFS=,; echo "${_VISIBLE_GPU_IDS[*]:0:$NUM_GPUS}")
+    export CUDA_VISIBLE_DEVICES
+else
     export CUDA_VISIBLE_DEVICES=$(seq 0 $((NUM_GPUS-1)) | paste -sd, -)
 fi
-export CUDA_VISIBLE_DEVICES=0,1
-# CRITICAL: NUM_GPUS를 CUDA_VISIBLE_DEVICES의 실제 GPU 개수로 재설정 (launcher가 LOCAL_RANK를 올바르게 설정하도록)
+# Recompute NUM_GPUS from final CUDA_VISIBLE_DEVICES for accelerate launch
 NUM_GPUS=$(echo "$CUDA_VISIBLE_DEVICES" | tr ',' '\n' | wc -l)
 export PYTHONUNBUFFERED=1
 export TOKENIZERS_PARALLELISM=false
 # CUDA allocator tuning to reduce fragmentation and OOM risk
-export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:64,expandable_segments:True
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,garbage_collection_threshold:0.8
 # Avoid heavy sync/blocking debug flags which increase memory/stalls
-export CUDA_LAUNCH_BLOCKING=1
+export CUDA_LAUNCH_BLOCKING=0
 export TORCH_USE_CUDA_DSA=1
 export FLASH_ATTENTION_2_ENABLED=true
 # if system could use flash attention 3, use the following variables
@@ -230,6 +237,10 @@ else
     echo "3. Use ZeRO-3 without param offload, or increase tensor_parallel / reduce batch or seq length (param offload 금지)"
     echo "4. Enable gradient checkpointing"
     echo "5. Reduce model size if initializing from scratch"
+    echo ""
+    echo -e "${YELLOW}If Rank 1 hits 'Watchdog caught collective operation timeout' (ZeRO-3 all_gather):${NC}"
+    echo "  → Rank 0 likely OOM'd first. Check Rank 0 logs for OutOfMemoryError."
+    echo "  → ZeRO-3 only (no fallback): reduce stage3_max_live_parameters in deepspeed_zero3.json (e.g. 25e6)."
     exit 1
 fi
 

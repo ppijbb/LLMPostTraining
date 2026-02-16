@@ -1,4 +1,4 @@
-
+import os
 import torch
 import logging
 from typing import Dict, Any, List, Optional, Tuple, Callable
@@ -111,18 +111,17 @@ def setup_dataset(data_config: Dict[str, Any], tokenizer, logger: logging.Logger
             except Exception:
                 pass
 
-        # [0vs2048] 체크: 첫 배치 1회만 로그 (collator 출력 shape 검증)
-        if not getattr(pure_qwen_collate_fn, "_logged_once", False):
+        # [0vs2048] 디버깅 시에만: 첫 배치 1회 로그 (SPECTRA_DEBUG_0VS2048=1 일 때만)
+        if os.environ.get("SPECTRA_DEBUG_0VS2048") == "1" and not getattr(pure_qwen_collate_fn, "_logged_once", False):
             pure_qwen_collate_fn._logged_once = True
             _pv = batch.get("pixel_values")
             _grid = batch.get("image_grid_thw")
             _num_patches = int(_pv.shape[0]) if _pv is not None and hasattr(_pv, "shape") else None
             _grid_str = tuple(_grid.shape) if _grid is not None and hasattr(_grid, "shape") else str(_grid)
-            import sys
             print(f"[0vs2048] COLLATOR CHECK: first batch | pixel_values.shape={getattr(_pv, 'shape', None)}, image_grid_thw.shape={_grid_str} | num_patches(seq)={_num_patches} (must be same on all ranks)", flush=True)
-            sys.stdout.flush()
 
         return batch
 
-    logger.info("[0vs2048] Collator: pure_qwen_collate_fn | image resize 224x224 → uniform vision patch count across ranks | CHECK: COLLATOR CHECK line = first batch shape, STEP0 BATCH CHECK = per-rank step0 input")
+    if os.environ.get("SPECTRA_DEBUG_0VS2048") == "1":
+        logger.info("[0vs2048] Collator: pure_qwen_collate_fn | image resize 224x224 → uniform vision patch count across ranks")
     return dataset, pure_qwen_collate_fn

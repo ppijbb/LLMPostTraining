@@ -22,3 +22,4 @@ mlruns
 uv.lock
 pyproject.toml
 .python-version
+out2

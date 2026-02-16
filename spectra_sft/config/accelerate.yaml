@@ -5,7 +5,7 @@ dynamo_backend: YES
 use_cpu: false
 downcast_bf16: 'no'
 enable_cpu_affinity: false
-num_processes: 2
+num_processes: 4
 num_machines: 1
 machine_rank: 0
 gpu_ids: all
@@ -22,6 +22,6 @@ deepspeed_config:
   zero3_init_flag: false
 
 parallelism_config:
-  tp_size: 2
+  tp_size: 1
   sp_size: 1
   dp_shard_size: 1

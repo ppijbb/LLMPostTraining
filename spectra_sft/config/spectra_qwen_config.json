@@ -19,7 +19,7 @@
       "n_routed_experts": 128,
       "n_group": 2,
       "topk_group": 2,
-      "num_experts_per_tok": 8,
+      "num_experts_per_tok": 2,
       "first_k_dense_replace": 0,
       "no_rope_layer_interval": 0,
       "neftune_noise_alpha": 2.0,
@@ -29,7 +29,7 @@
       "router_jitter_noise": 0.005,
       "input_jitter_noise": 0.005,
       "router_z_loss_coef": 0.0001,
-      "router_dim": 256,
+      "router_dim": 128,
       "ema_alpha": 0.99,
       "balancing_strength": 0.03,
       "bias_predictor_hidden_dim": 256,
@@ -121,7 +121,7 @@
     "dataloader_drop_last": true,
     "gradient_checkpointing": true,
     "gradient_checkpointing_kwargs": {
-      "use_reentrant": true,
+      "use_reentrant": false,
       "preserve_rng_state": true
     },
     "report_to": [
@@ -131,8 +131,8 @@
     "project": "SPECTRA-moe-sft",
     "seed": 4900,
     "log_on_each_node": false,
-    "max_grad_norm": 1.0,
-    "ddp_find_unused_parameters": true,
+    "max_grad_norm": 0.0,
+    "ddp_find_unused_parameters": false,
     "ddp_broadcast_buffers": true,
     "use_liger_kernel": false
   }

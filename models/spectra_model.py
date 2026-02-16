@@ -990,8 +990,9 @@ class IntentGatedContextCell(nn.Module):
         
         # Gated projection (replaces sequential GRU)
         intent = self.intent_proj(x_pooled * gate_val)
-        
-        return intent.detach()  # Detach to prevent BPTT
+        # [OOM/Checkpoint Fix] Do not detach: keeps requires_grad so checkpoint backward
+        # has valid inputs and avoids "None of the inputs have requires_grad=True".
+        return intent
 
 class SPECTRARouter(nn.Module):
     def __init__(self, config: SPECTRATextConfig, **kwargs):
@@ -1058,6 +1059,13 @@ class SPECTRARouter(nn.Module):
         """
         Agentic SPECTRA Routing (ALF + GLN + Global Intent)
         """
+        # NOTE: Manual Hydration (p.all_gather()) is NOT needed here because
+        # SPECTRAMoE is registered as a ZeRO-3 leaf_module in deepspeed_zero3.json.
+        # The leaf module pre-forward hook automatically gathers ALL descendant parameters
+        # (including Router's) before forward() runs.
+        # Adding manual all_gather() creates duplicate collectives that deadlock
+        # during gradient checkpointing recompute.
+
         if self.training:
             self._increment_step()
         batch_size, seq_len, _ = x.shape
@@ -1152,10 +1160,10 @@ class SPECTRARouter(nn.Module):
         # ----------------------------------------------------------------
         topk_weights, topk_indices = torch.topk(biased_logits, k=k, dim=-1)
         routing_weights = F.softmax(topk_weights, dim=-1).to(dtype=x.dtype)
-        
-        # Full Probs for Logging
-        routing_probs_full = torch.zeros(N, E, device=x.device, dtype=x.dtype)
-        routing_probs_full.scatter_(1, topk_indices, routing_weights)
+
+        # [OOM Fix] Return biased_logits (already [N,E]) as router_logits slot instead of
+        # allocating routing_probs_full; loss applies softmax internally. Saves one [N,E] per layer.
+        router_logits_out = biased_logits
 
         # Losses
         ortho_loss = self.compute_affinity_loss() * 0.05
@@ -1163,30 +1171,30 @@ class SPECTRARouter(nn.Module):
 
         if is_dummy_batch:
              return (
-                torch.empty(0, k, device=x.device, dtype=routing_weights.dtype), 
+                torch.empty(0, k, device=x.device, dtype=routing_weights.dtype),
                 torch.empty(0, k, device=x.device, dtype=topk_indices.dtype),
                 None,  # expression_logits
-                torch.empty(0, self.hidden_size, device=x.device, dtype=x.dtype), # hn
-                zero, zero, zero,   
-                torch.empty(0, E, device=x.device, dtype=routing_probs_full.dtype), 
+                torch.empty(0, self.hidden_size, device=x.device, dtype=x.dtype),  # hn
+                zero, zero, zero,
+                torch.empty(0, E, device=x.device, dtype=biased_logits.dtype),
                 zero, zero, zero,
                 balance_loss,
                 zero,
-                ortho_loss,   
+                ortho_loss,
                 zero
             )
 
         return (
-            routing_weights,    
-            topk_indices,      
-            None,               
-            intent, # Return intent as 'hn' context            
-            zero, zero, zero,   
-            routing_probs_full, 
+            routing_weights,
+            topk_indices,
+            None,
+            intent,  # Return intent as 'hn' context
+            zero, zero, zero,
+            router_logits_out,
             zero, zero, zero,
             balance_loss,
             zero,
-            ortho_loss,         
+            ortho_loss,
             zero
         )
 iterations = 0
@@ -1437,99 +1445,52 @@ class SPECTRAMoE(nn.Module):
         # =======================================================================
         hidden_states_flat = hidden_states.view(-1, hidden_dim)
 
-        # Fused path only (user requirement).
+        # Fused path (Qwen3-VL-MoE experts are a single callable, not nn.ModuleList)
         if not isinstance(self.experts, nn.ModuleList) and callable(self.experts):
+            # [OOM Fix] Direct call WITHOUT max_tokens padding.
+            # Padding all ranks to max_tokens was causing massive memory overhead
+            # in backward (max_tokens × hidden_dim × num_experts gradients).
+            # trainable_spectra uses direct call - proven deadlock-free.
             fwd_input = hidden_states_flat.view(batch_size, sequence_length, hidden_dim)
             num_tokens = batch_size * sequence_length
 
-            # [Deadlock Fix] All ranks must call experts() with the SAME shape so backward
-            # runs the same collectives. Pad to max_tokens across ranks when distributed.
-            if dist.is_initialized():
-                max_tokens_t = torch.tensor(num_tokens, device=device, dtype=torch.long)
-                dist.all_reduce(max_tokens_t, op=dist.ReduceOp.MAX)
-                max_tokens = max_tokens_t.item()
-            else:
-                max_tokens = num_tokens
+            # Scatter routing weights to full [N, E] format for Qwen3 experts
+            full_weights = torch.zeros(num_tokens, self.num_experts, device=device, dtype=dtype)
+            full_weights.scatter_(1, selected_experts, routing_weights)
 
-            # Use actual top_k from router output (may differ from self.top_k after inject)
-            top_k_actual = routing_weights.size(1)
+            # Call experts directly (no padding)
+            fwd_out = self.experts(fwd_input, full_weights, selected_experts)
+            final_hidden_states = fwd_out.view(num_tokens, hidden_dim)
 
-            if max_tokens == 0:
-                dummy_hidden = torch.zeros(1, 1, hidden_dim, device=device, dtype=dtype)
-                dummy_weights = torch.zeros(1, self.num_experts, device=device, dtype=dtype)
-                dummy_ind = torch.zeros(1, top_k_actual, device=device, dtype=torch.long)
-                fwd_out = self.experts(dummy_hidden, dummy_weights, dummy_ind)
-                final_hidden_states = fwd_out[:, :0, :].reshape(0, hidden_dim)
-            else:
-                fwd_input_padded = torch.zeros(1, max_tokens, hidden_dim, device=device, dtype=dtype)
-                if num_tokens > 0:
-                    fwd_input_padded[:, :num_tokens, :] = fwd_input.view(1, num_tokens, hidden_dim)
-                full_weights = torch.zeros(max_tokens, self.num_experts, device=device, dtype=routing_weights.dtype)
-                if num_tokens > 0:
-                    full_weights[:num_tokens].scatter_(1, selected_experts, routing_weights)
-                selected_padded = torch.zeros(max_tokens, top_k_actual, device=device, dtype=torch.long)
-                if num_tokens > 0:
-                    selected_padded[:num_tokens] = selected_experts
-                fwd_out = self.experts(fwd_input_padded, full_weights, selected_padded)
-                final_hidden_states = fwd_out[:, :num_tokens, :].reshape(num_tokens, hidden_dim)
-
-            # --- Legacy EMA Update Removed ---
-            # Using simple stateless routing for stability
+            # --- Stateless routing (no EMA updates for stability) ---
             if self.training and hasattr(self, 'expert_specialization_ema'):
-                 # Placeholder to keep buffer alive if needed, but no logic
                  pass
-            # --- End EMA Update ---
 
         else:
             # 🚀 Standard MoE Path (ModuleList / Loop)
-            # Unified path handling both empty and non-empty inputs
-            # No fixed padding to max_capacity to avoid OOM
-            
+            # Uses parameter guard instead of dummy forward for graph connectivity
             expert_mask = expert_mask.permute(2, 0, 1)  # [E, tokens, top_k]
-            routing_weights_flat = routing_weights.view(-1)
-            
-            # [ZeRO-3 Optimization] Global Sparse Activation
-            local_expert_usage = (expert_mask.sum(dim=(1, 2)) > 0).long()  # [E]
-            
-            # Sync to find which experts are active GLOBALLY
-            if dist.is_initialized():
-                global_expert_usage = local_expert_usage.clone()
-                dist.all_reduce(global_expert_usage, op=dist.ReduceOp.MAX)
-            else:
-                global_expert_usage = local_expert_usage
-            
-            # Accumulator for dummy loss to ensure graph connectivity for unused experts
-            dummy_loss = torch.zeros(1, device=device, dtype=dtype)
 
             for expert_idx in range(self.num_experts):
-                # [OOM FIX] Skip expert if NOBODY in the world is using it.
-                if global_expert_usage[expert_idx] == 0:
-                    continue
-
                 expert_layer = self.experts[expert_idx]
-                
-                # Get indices for this expert
-                token_idx, topk_idx = torch.where(expert_mask[expert_idx])
-                
-                if token_idx.numel() > 0:
-                    # [Normal Execution] Expert has assigned tokens
-                    current_idx = token_idx * self.top_k + topk_idx
-                    states = hidden_states_flat[current_idx]
-                    expert_out = expert_layer(states)
-                    scale = routing_weights_flat[current_idx].unsqueeze(1)
-                    final_hidden_states.index_add_(0, current_idx, expert_out * scale)
-                else:
-                    # [ZeRO-3 Safety] Expert is active GLOBALLY but NOT LOCALLY.
-                    # Run a 1-token dummy forward to:
-                    #   1) Trigger ZeRO-3 module hooks (matching normal forward exactly → no deadlock)
-                    #   2) Use minimal memory (1 token vs full batch)
-                    #   3) Multiply output by 0.0 → zero gradient, no effect on loss
-                    dummy_token = torch.zeros(1, hidden_dim, device=device, dtype=dtype)
-                    dummy_out = expert_layer(dummy_token)
-                    dummy_loss = dummy_loss + dummy_out.sum() * 0.0
 
-            # Connect dummy_loss to the output
-            final_hidden_states = final_hidden_states + dummy_loss
+                # [ZeRO-3 Fix] Lightweight Parameter Guard (from trainable_spectra)
+                # Touch all parameters with zero-weight to keep them in autograd graph
+                # without running a full forward pass. Much lighter than dummy forward.
+                if self.training:
+                    p_guard = 0.0
+                    for p in expert_layer.parameters():
+                        if p.requires_grad:
+                            p_guard += (p * 0).sum()
+                    final_hidden_states = final_hidden_states + p_guard
+
+                token_idx, topk_idx = torch.where(expert_mask[expert_idx])
+
+                if token_idx.numel() > 0:
+                    top_x_list = token_idx.tolist()
+                    current_state = hidden_states_flat[top_x_list]
+                    current_hidden_states = expert_layer(current_state) * routing_weights[top_x_list, topk_idx].unsqueeze(-1)
+                    final_hidden_states.index_add_(0, token_idx, current_hidden_states.to(hidden_states.dtype))
 
         final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
 
@@ -2851,7 +2812,7 @@ class SPECTRATextModel(SPECTRAPreTrainedModel):
             if routing_result is not None:
                 router_logits = routing_result[0]
                 if router_logits is not None:
-                    all_router_logits.append(router_logits)
+                    all_router_logits.append(router_logits.detach())
                 global_routing_hn = routing_result[1]
 
                 layer_speciality_loss = routing_result[2]
@@ -4026,8 +3987,11 @@ class SPECTRARouterTrainingMonitor:
             probs = router_logits
         if probs.numel() == 0:
             return None, None
-        # 본 코드 경로에서는 router_logits가 '확률'로 전달되는 경우가 많음
-        p = probs.clamp_min(1e-12)
+        # Router may return logits (biased_logits) or probs; normalize to probs for usage/entropy
+        p = probs.float()
+        if p.dim() >= 2 and (p.min().item() < -0.01 or p.max().item() > 1.01):
+            p = F.softmax(p, dim=-1)
+        p = p.clamp_min(1e-12)
         num_experts = p.size(-1)
         top1 = p.argmax(dim=-1)
         usage = torch.bincount(top1, minlength=num_experts).float()

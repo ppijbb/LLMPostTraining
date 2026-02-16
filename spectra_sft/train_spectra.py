@@ -698,6 +698,42 @@ def apply_deepspeed_shutil_patch():
 
 apply_deepspeed_shutil_patch()
 
+def apply_deepspeed_zero3_norm_patch():
+    """
+    ZeRO-3 OOM fix:
+    DeepSpeed stage3 default _constant_buffered_norm2 uses part.double(), which can
+    trigger a large temporary fp64 allocation during backward on large grad buffers.
+    Patch it to fp32 + smaller chunks to reduce peak memory.
+    """
+    try:
+        import deepspeed.runtime.zero.stage3 as ds_stage3
+        cls = ds_stage3.DeepSpeedZeroOptimizer_Stage3
+        if getattr(cls, "_spectra_norm_patch_applied", False):
+            return
+
+        def _spectra_constant_buffered_norm2(self, input, buffer_size=8_388_608):
+            if input is None:
+                return torch.tensor(0.0, device="cpu")
+
+            flat = input.view(-1)
+            if flat.numel() == 0:
+                return torch.tensor(0.0, device=flat.device, dtype=torch.float32)
+
+            norm_sq = None
+            for part in flat.split(buffer_size):
+                # fp32 accumulation is enough for grad norm and avoids fp64 OOM spikes.
+                part_norm_sq = part.float().norm(2).pow(2)
+                norm_sq = part_norm_sq if norm_sq is None else norm_sq + part_norm_sq
+            return norm_sq.sqrt()
+
+        cls._constant_buffered_norm2 = _spectra_constant_buffered_norm2
+        cls._spectra_norm_patch_applied = True
+        print("✅ Patched DeepSpeed ZeRO-3 grad norm to fp32 chunked path")
+    except Exception as e:
+        print(f"⚠️ Failed to patch DeepSpeed ZeRO-3 grad norm: {e}")
+
+apply_deepspeed_zero3_norm_patch()
+
 # --- Standard Setup ---
 # Standard DeepSpeed patches are disabled to rely on standard Trainer/Accelerate integration
 
@@ -1605,18 +1641,21 @@ def main(
     # Initialize distributed environment manually if needed
     # This ensures DeepSpeed can detect world size correctly during HfDeepSpeedConfig initialization
     # CRITICAL: Pass device_id so NCCL uses the correct GPU per rank (avoids "calloc async 608 bytes" / Duplicate GPU)
+    # CRITICAL: ZeRO-3 all_gather (NVMe offload) can be slow; 60min timeout to avoid Watchdog. No fallback.
     if not dist.is_initialized():
         try:
+            from datetime import timedelta
+            _nccl_timeout = timedelta(minutes=60)
             local_rank_for_init = int(os.environ.get("LOCAL_RANK", 0))
-            init_kwargs = {"backend": "nccl"}
+            init_kwargs = {"backend": "nccl", "timeout": _nccl_timeout}
             if torch.cuda.is_available() and 0 <= local_rank_for_init < torch.cuda.device_count():
                 init_kwargs["device_id"] = local_rank_for_init
             dist.init_process_group(**init_kwargs)
-            logger.info("✅ Manually initialized distributed process group (with device_id for NCCL)")
+            logger.info("✅ Manually initialized distributed process group (with device_id for NCCL, timeout=60min)")
         except TypeError:
-            # Older PyTorch may not support device_id
-            dist.init_process_group(backend="nccl")
-            logger.info("✅ Manually initialized distributed process group")
+            from datetime import timedelta
+            dist.init_process_group(backend="nccl", timeout=timedelta(minutes=60))
+            logger.info("✅ Manually initialized distributed process group (timeout=60min)")
         except Exception as e:
             logger.warning(f"⚠️ Failed to manually initialize distributed process group: {e}")
             pass
@@ -2201,14 +2240,14 @@ def main(
             # 3. Explicitly add Shared Global/Specific classes for ZeRO-3 stability
             # NOTE: SPECTRARouter is REMOVED from leaf modules to prevent race conditions
             # during backward pass in Qwen3-VL-MoE (causes tensor size 0 vs 2048 mismatch)
-            # The parent MoE block (Qwen3VLMoeTextSparseMoeBlock) will handle router params
+            # Keep only the sparse MoE block as leaf to avoid over-coalescing giant expert tensors.
             important_classes = [
                 # Removed: "SPECTRARouter" - causes gradient race condition in ZeRO-3
                 "SPECTRAVisionModel",
                 # Qwen3-VL-MoE Vision
                 "Qwen3VLMoeVisionModel", "Qwen3VLMoeVisionBlock", "Qwen3VLMoeVisionPatchMerger",
-                # Qwen3-VL-MoE Text Experts (parent block handles router)
-                "Qwen3VLMoeTextExperts", "Qwen3VLMoeTextSparseMoeBlock", "Qwen3VLMoeTextMLP"
+                # Qwen3-VL-MoE Text (do NOT mark Qwen3VLMoeTextExperts as leaf)
+                "Qwen3VLMoeTextSparseMoeBlock", "Qwen3VLMoeTextMLP"
             ]
             for name, module in model.named_modules():
                 class_name = type(module).__name__
@@ -2669,7 +2708,7 @@ def main(
             # [0vs2048] 첫 스텝에서만 배치 vision 정보 로그 (모든 rank, 체크용)
             step = _compute_loss_step[0]
             _compute_loss_step[0] += 1
-            if step == 0:
+            if step == 0 and os.environ.get("SPECTRA_DEBUG_0VS2048") == "1":
                 try:
                     r = dist.get_rank() if dist.is_initialized() else 0
                     kv = [f"rank={r}"]
@@ -2860,6 +2899,9 @@ def main(
         # DETECT_ANOMALY is set earlier in setup; when ON, backward 실패 시 정확한 연산 위치 출력됨.
 
         try:
+            # ZeRO-3: Sync all ranks before training to avoid collective mismatch / deadlock
+            if dist.is_initialized():
+                dist.barrier()
             if enable_profiler:
                 with profile(
                     activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
@@ -2872,7 +2914,6 @@ def main(
                     wandb.log({"profiler_table": wandb.Table(data=[profiler_table])})
             else:
                 # CRITICAL FIX: Don't wrap trainer.train() with checkpoint debug mode
-                # This can cause hanging in distributed training
                 trainer.train()
             
             training_time = time.time() - start_time
@@ -2926,6 +2967,10 @@ def main(
             print("="*80)
             print(f"Error type: {error_type}")
             print(f"Error message: {error_msg}")
+            if "Watchdog" in error_msg and "timeout" in error_msg.lower():
+                print("💡 Rank 1 timed out waiting for all_gather → Rank 0 likely exited earlier (e.g. CUDA OOM).")
+                print("   Check Rank 0 stdout/stderr for OutOfMemoryError. ZeRO-3 only (no fallback).")
+                print("   Reduce OOM: lower stage3_max_live_parameters in deepspeed_zero3.json, gradient_checkpointing=True, batch_size=1.")
             print("="*80)
             sys.stdout.flush()
             sys.stderr.flush()
