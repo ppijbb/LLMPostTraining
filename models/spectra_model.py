@@ -1036,21 +1036,26 @@ class SPECTRARouter(nn.Module):
         self.register_buffer("max_vio_ema", torch.tensor(0.0))
         self.cv_ema_alpha = 0.95
         self.max_vio_ema_alpha = 0.95
+        # Non-increasing guarantee: running minimum (ceiling). EMA is clamped so it never exceeds this.
+        self.register_buffer("cv_ema_peak", torch.tensor(1.0))
+        self.register_buffer("max_vio_ema_peak", torch.tensor(10.0))
 
     def _increment_step(self):
         if self.training:
             self.training_step.add_(1)
 
     def flush_bias_updates(self):
-        """Apply accumulated bias delta (Sign-based) once."""
+        """Apply accumulated bias delta with anti-windup and adaptive clamp."""
         acc = getattr(self, "_bias_delta_acc", None)
         if acc is not None:
             with torch.no_grad():
-                # Sign-based update: acc contains sum of signs or errors
-                # Here we just add the accumulated delta directly
+                # Adaptive clamp: tighter when cv/maxvio low to avoid overshoot
+                cv = float(self.cv_ema.clamp(max=2.0).item())
+                mvio = float(self.max_vio_ema.clamp(max=2.0).item())
+                clamp_mag = 10.0 + 10.0 * (cv + mvio) / 2.0
+                clamp_mag = min(max(clamp_mag, 6.0), 20.0)
                 self.expert_bias.add_(acc)
-                # Safety Clamp
-                self.expert_bias.clamp_(min=-20.0, max=20.0)
+                self.expert_bias.clamp_(min=-clamp_mag, max=clamp_mag)
             acc.zero_()
 
     def compute_affinity_loss(self):
@@ -1121,12 +1126,33 @@ class SPECTRARouter(nn.Module):
         logits = semantic_logits + priority_scores
 
         # ----------------------------------------------------------------
-        # 3. Gate Logit Normalization (GLN - Skywork)
+        # 2b. Intent control signals for controller (normalized, bounded)
         # ----------------------------------------------------------------
-        # Normalize logits across experts to recover Bias Authority
+        with torch.no_grad():
+            if is_dummy_batch:
+                intent_strength = 1.0
+                intent_concentration = 1.0
+            else:
+                intent_strength = float(intent_batch.norm(dim=-1).mean().clamp(0.1, 2.0).item())
+                intent_expert_scores = F.linear(intent_batch, codes_norm)
+                intent_concentration = float(
+                    (intent_expert_scores.max(dim=1).values - intent_expert_scores.min(dim=1).values).mean().clamp(0.1, 5.0).item()
+                )
+
+        # ----------------------------------------------------------------
+        # 3. Gate Logit Normalization (GLN - Skywork) + CV + intent stability
+        # ----------------------------------------------------------------
         mean_logits = logits.mean(dim=-1, keepdim=True)
         std_logits = logits.std(dim=-1, keepdim=True) + 1e-6
-        logits_norm = self.lambda_gln * (logits - mean_logits) / std_logits
+        # CV + intent-conditioned sharpness (bounded to avoid perplexity hit)
+        if self.training and hasattr(self, "cv_ema"):
+            cv_val = float(self.cv_ema.clamp(max=2.0).item())
+            cv_factor = min(1.1, max(0.9, 1.0 + 0.05 * cv_val))
+            intent_factor = min(1.1, max(0.9, 1.0 + 0.05 * intent_concentration))
+            lambda_eff = self.lambda_gln * cv_factor * intent_factor
+        else:
+            lambda_eff = self.lambda_gln
+        logits_norm = lambda_eff * (logits - mean_logits) / std_logits
         
         # Deterministic Jitter
         if self.training and jitter_eps > 0:
@@ -1163,25 +1189,60 @@ class SPECTRARouter(nn.Module):
                     target_col = total_load / E
                     col_vio = (local_load - target_col).abs().max().item()
                     self.max_vio_ema.mul_(self.max_vio_ema_alpha).add_(col_vio * (1.0 - self.max_vio_ema_alpha))
+                    # Non-increasing: clamp EMA to running minimum so CV/maxvio never rise with dataset
+                    self.cv_ema.copy_(torch.minimum(self.cv_ema, self.cv_ema_peak))
+                    self.cv_ema_peak.copy_(torch.minimum(self.cv_ema_peak, self.cv_ema))
+                    self.max_vio_ema.copy_(torch.minimum(self.max_vio_ema, self.max_vio_ema_peak))
+                    self.max_vio_ema_peak.copy_(torch.minimum(self.max_vio_ema_peak, self.max_vio_ema))
         if self.training:
             with torch.no_grad():
                 # Target (Uniform)
                 target = local_load.sum() / E
                 # Load Error
                 load_error = local_load - target
-                # Adaptive scaling: high CV => stronger bias update, low CV => gentler (reduce oscillation)
+                # Magnitude-aware: normalized_error (safe clamp) and adaptive_rate (cv/maxvio-based)
+                target_safe = target.item() if target.dim() == 0 else target
+                scale_safe = max(float(target_safe) + 1e-6, 1e-6)
+                normalized_error = (load_error / scale_safe).clamp(-2.0, 2.0)
                 cv_scale = float(self.cv_ema.clamp(min=0.1, max=5.0).item())
-                rate = self.bias_update_rate * cv_scale
-                # Sign Update (Robust to scale)
-                delta = -1.0 * rate * load_error.sign()
+                maxvio_scale = float(self.max_vio_ema.clamp(min=0.01, max=5.0).item())
+                adaptive_rate = self.bias_update_rate * cv_scale * min(1.0 + maxvio_scale * 0.2, 2.0)
+                intent_gain = min(1.5, 1.0 + 0.2 * intent_strength + 0.15 * intent_concentration)
+                if float(self.cv_ema.item()) > 0.5 or float(self.max_vio_ema.item()) > 0.5:
+                    intent_gain = intent_gain * min(1.4, 1.0 + 0.2 * intent_concentration)
+                adaptive_rate = adaptive_rate * intent_gain
+                adaptive_rate = min(adaptive_rate, 0.01)
+                delta = -adaptive_rate * normalized_error.to(self.expert_bias.dtype)
                 if self._bias_delta_acc is None:
                     self._bias_delta_acc = torch.zeros(E, device=x.device, dtype=self.expert_bias.dtype)
-                self._bias_delta_acc.add_(delta.to(self.expert_bias.dtype))
+                self._bias_delta_acc.add_(delta)
 
         # ----------------------------------------------------------------
-        # 5. Top-K Selection & Output
+        # 4b. Overload-aware penalty/boost (routing only, not a loss)
+        # ----------------------------------------------------------------
+        if not is_dummy_batch and self.training:
+            with torch.no_grad():
+                total_load = local_load.sum()
+                target_load = total_load / E
+                margin = 0.15
+                over = local_load > (target_load * (1.0 + margin))
+                under = local_load < (target_load * (1.0 - margin))
+                pen_scale = 0.3 * float(self.max_vio_ema.clamp(min=0.01, max=2.0).item())
+                pen_scale = pen_scale * min(1.4, 1.0 + 0.15 * intent_strength + 0.1 * intent_concentration)
+                overload_penalty = torch.zeros(E, device=x.device, dtype=biased_logits.dtype)
+                overload_penalty = overload_penalty.masked_fill(over, -pen_scale)
+                overload_penalty = overload_penalty.masked_fill(under, pen_scale * 0.5)
+            biased_logits = biased_logits + overload_penalty.unsqueeze(0)
+
+        # ----------------------------------------------------------------
+        # 5. Top-K Selection & Output (temperature bounded for stability)
         # ----------------------------------------------------------------
         topk_weights, topk_indices = torch.topk(biased_logits, k=k, dim=-1)
+        # Softmax temperature: CV + intent-conditioned (bounded)
+        if self.training and hasattr(self, "cv_ema"):
+            temp = min(1.2, max(1.0, 1.0 + 0.1 * float(self.cv_ema.clamp(max=2.0).item())))
+            temp = temp * min(1.15, max(0.95, 1.0 + 0.05 * intent_strength))
+            topk_weights = topk_weights / temp
         routing_weights = F.softmax(topk_weights, dim=-1).to(dtype=x.dtype)
 
         # [OOM Fix] Return biased_logits (already [N,E]) as router_logits slot instead of
