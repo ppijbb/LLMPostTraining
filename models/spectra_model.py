@@ -697,7 +697,6 @@ class SPECTRAModelOutputWithPast(BaseModelOutputWithPast):
     entropy_loss: Optional[torch.FloatTensor] = None
     load_balancing_loss: Optional[torch.FloatTensor] = None
     sinkhorn_loss: Optional[torch.FloatTensor] = None
-    balance_loss: Optional[torch.FloatTensor] = None
 
 
 @dataclass
@@ -1032,6 +1031,12 @@ class SPECTRARouter(nn.Module):
         self.curriculum_steps = getattr(config, "curriculum_steps", 10000)
         self.register_buffer("training_step", torch.tensor(0, dtype=torch.long))
 
+        # CV / maxvio tracking (lightweight port from trainable_spectra for balance loss and adaptive bias)
+        self.register_buffer("cv_ema", torch.tensor(1.0))
+        self.register_buffer("max_vio_ema", torch.tensor(0.0))
+        self.cv_ema_alpha = 0.95
+        self.max_vio_ema_alpha = 0.95
+
     def _increment_step(self):
         if self.training:
             self.training_step.add_(1)
@@ -1059,6 +1064,8 @@ class SPECTRARouter(nn.Module):
         """
         Agentic SPECTRA Routing (ALF + GLN + Global Intent)
         """
+        # [ZeRO-3 Collective Safety] No manual p.all_gather() in routing path; DS hooks gather params.
+        # Any dist.all_reduce must be hit by all ranks unconditionally (same branch every rank).
         # NOTE: Manual Hydration (p.all_gather()) is NOT needed here because
         # SPECTRAMoE is registered as a ZeRO-3 leaf_module in deepspeed_zero3.json.
         # The leaf module pre-forward hook automatically gathers ALL descendant parameters
@@ -1143,14 +1150,30 @@ class SPECTRARouter(nn.Module):
                 local_load = probs.sum(0)
             if dist.is_initialized():
                 dist.all_reduce(local_load, op=dist.ReduceOp.SUM)
+        if self.training and not is_dummy_batch:
+            with torch.no_grad():
+                # CV/maxvio EMA update (lightweight port from trainable_spectra)
+                total_load = local_load.sum()
+                if total_load > 0:
+                    expert_dist = local_load / total_load
+                    mean_p = expert_dist.mean()
+                    var_p = expert_dist.var(unbiased=False)
+                    current_cv = (var_p.sqrt() / (mean_p + 1e-6)).item()
+                    self.cv_ema.mul_(self.cv_ema_alpha).add_(current_cv * (1.0 - self.cv_ema_alpha))
+                    target_col = total_load / E
+                    col_vio = (local_load - target_col).abs().max().item()
+                    self.max_vio_ema.mul_(self.max_vio_ema_alpha).add_(col_vio * (1.0 - self.max_vio_ema_alpha))
         if self.training:
             with torch.no_grad():
                 # Target (Uniform)
                 target = local_load.sum() / E
                 # Load Error
                 load_error = local_load - target
+                # Adaptive scaling: high CV => stronger bias update, low CV => gentler (reduce oscillation)
+                cv_scale = float(self.cv_ema.clamp(min=0.1, max=5.0).item())
+                rate = self.bias_update_rate * cv_scale
                 # Sign Update (Robust to scale)
-                delta = -1.0 * self.bias_update_rate * load_error.sign()
+                delta = -1.0 * rate * load_error.sign()
                 if self._bias_delta_acc is None:
                     self._bias_delta_acc = torch.zeros(E, device=x.device, dtype=self.expert_bias.dtype)
                 self._bias_delta_acc.add_(delta.to(self.expert_bias.dtype))
@@ -1165,9 +1188,24 @@ class SPECTRARouter(nn.Module):
         # allocating routing_probs_full; loss applies softmax internally. Saves one [N,E] per layer.
         router_logits_out = biased_logits
 
-        # Losses
+        # Losses: ortho only (speciality/entropy from elsewhere). balance_loss path removed per plan.
         ortho_loss = self.compute_affinity_loss() * 0.05
-        balance_loss = zero # Aux-free
+        if is_dummy_batch:
+            load_balancing_loss = zero
+            balance_loss = zero
+        else:
+            load_balancing_loss = spectra_lb_loss(
+                biased_logits,
+                E,
+                lb_l2_coef=getattr(self.config, "lb_l2_coef", 0.01),
+                lb_cv_coef=getattr(self.config, "lb_cv_coef", 0.05),
+                lb_entropy_floor_coef=getattr(self.config, "lb_entropy_floor_coef", 0.0002),
+                top_k=k,
+                lb_topk_l2_coef=getattr(self.config, "lb_topk_l2_coef", 0.09),
+                lb_topk_cv_coef=getattr(self.config, "lb_topk_cv_coef", 0.07),
+                attention_mask=None,
+            )
+            balance_loss = zero  # removed: CV/maxvio via router bias/EMA only, no balance loss term
 
         if is_dummy_batch:
              return (
@@ -1178,10 +1216,10 @@ class SPECTRARouter(nn.Module):
                 zero, zero, zero,
                 torch.empty(0, E, device=x.device, dtype=biased_logits.dtype),
                 zero, zero, zero,
-                balance_loss,
-                zero,
+                load_balancing_loss,
+                zero,  # sinkhorn_loss
                 ortho_loss,
-                zero
+                balance_loss,
             )
 
         return (
@@ -1192,10 +1230,10 @@ class SPECTRARouter(nn.Module):
             zero, zero, zero,
             router_logits_out,
             zero, zero, zero,
-            balance_loss,
-            zero,
+            load_balancing_loss,
+            zero,  # sinkhorn_loss
             ortho_loss,
-            zero
+            balance_loss,
         )
 iterations = 0
 class SPECTRAMoE(nn.Module):
@@ -1313,10 +1351,8 @@ class SPECTRAMoE(nn.Module):
             pass
         elif self.shared_experts is not None:
             with torch.no_grad():
-                # [ZeRO-3 Fix] Manual Hydration for shared experts
-                for p in self.shared_experts.parameters():
-                    if hasattr(p, 'ds_numel') and p.numel() < p.ds_numel:
-                        p.all_gather()
+                # [ZeRO-3] Do NOT call p.all_gather() here - duplicate collectives with DS hooks cause
+                # deadlock during backward / gradient checkpointing (see NOTE in SPECTRAMoE.forward).
                 pretriained_residual = self.shared_experts(residual)
 
             # final_hidden_states를 pretrained_residual의 크기에 맞춰 normalize
@@ -2824,7 +2860,6 @@ class SPECTRATextModel(SPECTRAPreTrainedModel):
                 layer_load_balancing_loss = routing_result[8] if len(routing_result) > 8 else None
                 layer_sinkhorn_loss = routing_result[9] if len(routing_result) > 9 else None
                 layer_ortho_loss = routing_result[10] if len(routing_result) > 10 else None
-                layer_balance_loss = routing_result[11] if len(routing_result) > 11 else None
 
                 if layer_speciality_loss is not None:
                     all_speciality_losses.append(layer_speciality_loss)
@@ -2856,10 +2891,6 @@ class SPECTRATextModel(SPECTRAPreTrainedModel):
                     if not hasattr(self, 'all_ortho_losses'):
                         self.all_ortho_losses = []
                     self.all_ortho_losses.append(layer_ortho_loss)
-                if layer_balance_loss is not None:
-                    if not hasattr(self, 'all_balance_losses'):
-                        self.all_balance_losses = []
-                    self.all_balance_losses.append(layer_balance_loss)
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
@@ -2988,16 +3019,6 @@ class SPECTRATextModel(SPECTRAPreTrainedModel):
             # 다음 forward를 위해 초기화
             self.all_ortho_losses = []
 
-        # balance_loss 집계 (GRU Solver의 constraint violation loss)
-        balance_loss = None
-        if hasattr(self, 'all_balance_losses') and self.all_balance_losses:
-            stacked = torch.stack(self.all_balance_losses)
-            balance_loss = stacked.mean()
-            # Removed redundant requires_grad_ call
-            balance_loss = balance_loss
-            # 다음 forward를 위해 초기화
-            self.all_balance_losses = []
-
         return SPECTRAModelOutputWithPast(
             last_hidden_state=hidden_states,
             past_key_values=past_key_values,
@@ -3013,7 +3034,6 @@ class SPECTRATextModel(SPECTRAPreTrainedModel):
             load_balancing_loss=load_balancing_loss,
             sinkhorn_loss=sinkhorn_loss,
             ortho_loss=ortho_loss,
-            balance_loss=balance_loss,
         )
 
 
@@ -3153,65 +3173,18 @@ class SPECTRAForCausalLM(SPECTRAPreTrainedModel, GenerationMixin):
         if labels is not None:
             loss = self.loss_function(logits, labels, self.vocab_size, **loss_kwargs)
 
-            # Speciality loss: Output orthogonality (encourages diverse expert outputs)
-            # [수정] Router가 이미 Adaptive Weight를 적용했으므로, 여기서는 1.0을 사용 (이중 스케일링 방지)
-            speciality_loss_coef = getattr(self.model.config, "speciality_loss_coef", 1.0)  # 0.02 -> 1.0
+            # [Option A] Only speciality + ortho + entropy in total loss; CV/maxvio via router bias/EMA only.
+            speciality_loss_coef = getattr(self.model.config, "speciality_loss_coef", 1.0)
             if outputs.speciality_loss is not None and speciality_loss_coef > 0:
                 loss += outputs.speciality_loss * speciality_loss_coef
 
-            # Contrastive loss: Input clustering (encourages experts to process distinct token types)
-            # [수정] Router가 이미 Adaptive Weight를 적용했으므로, 여기서는 1.0을 사용
-            contrastive_loss_coef = getattr(self.model.config, "contrastive_loss_coef", 1.0)  # 0.01 -> 1.0
-            if outputs.contrastive_loss is not None and contrastive_loss_coef > 0:
-                loss += outputs.contrastive_loss * contrastive_loss_coef
-
-            # Expression projector regularization loss: Direct connection to expression_logits for gradient flow
-            # This ensures expression_projector parameters receive gradients
-            expression_reg_loss_coef = getattr(self.model.config, "expression_reg_loss_coef", 1.0)
-            if outputs.expression_reg_loss is not None and expression_reg_loss_coef > 0:
-                loss += outputs.expression_reg_loss * expression_reg_loss_coef
-
-            # Expression projector loss: Ensure expression_logits contributes to loss for gradient flow
-            # cosine_similarities (domain_orthogonality)를 loss에 추가하여 expression_projector가 학습되도록 함
-            cosine_similarities_loss_coef = getattr(self.model.config, "cosine_similarities_loss_coef", 0.001)
-            if outputs.cosine_similarities is not None and cosine_similarities_loss_coef > 0:
-                # cosine_similarities는 [batch, seq, num_experts] 형태의 텐서 또는 스칼라
-                if torch.is_tensor(outputs.cosine_similarities) and outputs.cosine_similarities.numel() > 0:
-                    # 텐서인 경우 mean squared value를 최소화하여 expression diversity를 유지
-                    expr_loss = torch.mean(outputs.cosine_similarities ** 2) * cosine_similarities_loss_coef
-                    loss += expr_loss
-                elif isinstance(outputs.cosine_similarities, (int, float)):
-                    # 스칼라인 경우 직접 사용
-                    expr_loss = outputs.cosine_similarities * cosine_similarities_loss_coef
-                    loss += expr_loss
-
-            # ======================================================================================
-            # [Minimalist Loss: Sinkhorn + Sharpening]
-            # Sinkhorn은 구조적으로 이미 부하 분산을 처리하므로 별도 loss 불필요
-            # Sharpening만 entropy minimization으로 처리
-            # ======================================================================================
-
-            # [Sharpening] Entropy Minimization: "한 놈만 패라" (확실한 전문가 선택)
-            # router_entropy_coef는 양수로 사용 (entropy를 낮추는 방향)
             router_entropy_coef = getattr(self.model.config, "router_entropy_coef", 0.1)
             if outputs.entropy_loss is not None and router_entropy_coef > 0:
                 loss += outputs.entropy_loss * router_entropy_coef
 
-            # [Optional] Ortho Loss: 보험으로 약하게 유지 (학습 초반 가이드)
-            # Sinkhorn + Sharpening만으로도 분리가 되지만, 초반 헤매지 않도록 도움
-            ortho_loss_coef = getattr(self.model.config, "ortho_loss_coef", 0.01)  # 0.05 -> 0.01 (약하게)
+            ortho_loss_coef = getattr(self.model.config, "ortho_loss_coef", 0.01)
             if outputs.ortho_loss is not None and ortho_loss_coef > 0:
                 loss += outputs.ortho_loss * ortho_loss_coef
-
-            # ======================================================================================
-            # [제거된 Loss들]
-            # - gslb_coef: Sinkhorn이 구조적으로 처리
-            # - router_z_loss_coef: 불필요
-            # - sinkhorn_distillation_coef: Sharpening이 대신함
-            # - usage_uniformity_coef: Sinkhorn이 구조적으로 처리
-            # - load_balancing_loss: Sinkhorn이 구조적으로 처리
-            # - balance_loss: Sinkhorn이 구조적으로 처리
-            # ======================================================================================
 
         try:
             import torch.distributed as dist
@@ -3235,7 +3208,7 @@ class SPECTRAForCausalLM(SPECTRAPreTrainedModel, GenerationMixin):
             expression_reg_loss=outputs.expression_reg_loss,
             entropy_loss=outputs.entropy_loss,
             load_balancing_loss=outputs.load_balancing_loss,
-            sinkhorn_loss=outputs.sinkhorn_loss
+            sinkhorn_loss=outputs.sinkhorn_loss,
         )
 
 
@@ -3787,33 +3760,15 @@ class SPECTRAForConditionalGeneration(SPECTRAPreTrainedModel, GenerationMixin):
             flat_labels = shift_labels.view(-1).to(shift_logits.device)
             loss = loss_fct(flat_logits, flat_labels)
 
-            # Speciality loss: Output orthogonality (encourages diverse expert outputs)
-            if outputs.speciality_loss is not None:
-                loss += outputs.speciality_loss * 0.02  # 가중치 적용
+            # [Option A] Only speciality + ortho + entropy in total loss (same as main forward)
+            speciality_loss_coef = getattr(self.config.text_config, "speciality_loss_coef", 1.0)
+            if outputs.speciality_loss is not None and speciality_loss_coef > 0:
+                loss += outputs.speciality_loss * speciality_loss_coef
 
-            # Contrastive loss: Input clustering (encourages experts to process distinct token types)
-            if outputs.contrastive_loss is not None:
-                loss += outputs.contrastive_loss * 0.01  # 가중치 적용
-
-            # Expression projector regularization loss: Direct connection to expression_logits for gradient flow
-            if outputs.expression_reg_loss is not None:
-                loss += outputs.expression_reg_loss
-
-            # Expression projector loss: Ensure expression_logits contributes to loss for gradient flow
-            if outputs.cosine_similarities is not None:
-                if torch.is_tensor(outputs.cosine_similarities) and outputs.cosine_similarities.numel() > 0:
-                    expr_loss = torch.mean(outputs.cosine_similarities ** 2) * 0.001
-                    loss += expr_loss
-                elif isinstance(outputs.cosine_similarities, (int, float)):
-                    expr_loss = outputs.cosine_similarities * 0.001
-                    loss += expr_loss
-
-            # [Sharpening] Entropy Minimization
             router_entropy_coef = getattr(self.config.text_config, "router_entropy_coef", 0.1)
             if outputs.entropy_loss is not None and router_entropy_coef > 0:
                 loss += outputs.entropy_loss * router_entropy_coef
 
-            # [Optional] Ortho Loss
             ortho_loss_coef = getattr(self.config.text_config, "ortho_loss_coef", 0.01)
             if outputs.ortho_loss is not None and ortho_loss_coef > 0:
                 loss += outputs.ortho_loss * ortho_loss_coef
