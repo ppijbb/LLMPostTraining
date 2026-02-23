@@ -150,6 +150,8 @@ class TorchMoECallback:
         self.accuracy_history = deque(maxlen=200)
         self.hhh_history = deque(maxlen=50)
         self.judge_scores = deque(maxlen=50)
+        # CV-first KPI: sliding window for gating (mean/std over recent steps)
+        self.cv_window = deque(maxlen=50)
         self.latest_hhh_metrics = None
         self.latest_judge_score = None
         self.hhh_eval_fn: Optional[Callable] = None
@@ -1866,13 +1868,24 @@ class TorchMoECallback:
                         self._log_debug(f"Warning: Failed to calculate top-k gap for {layer_name}: {e}")
                     # 0으로 fallback하지 않음 - 메트릭을 추가하지 않음
                 
-                # z-loss (log-prob squared mean) from routing_probs
+                # routing_sharpness_metric: mean(log(prob)^2) — prob-based sharpness (distinct from training z-loss)
                 try:
                     log_probs = torch.log(routing_probs.clamp_min(1e-9))
-                    layer_metrics['z_loss'] = float((log_probs ** 2).mean().item())
+                    layer_metrics['routing_sharpness_metric'] = float((log_probs ** 2).mean().item())
                 except Exception as e:
                     if self.log_to_console:
-                        self._log_debug(f"Warning: Failed to calculate z_loss for {layer_name}: {e}")
+                        self._log_debug(f"Warning: Failed to calculate routing_sharpness_metric for {layer_name}: {e}")
+            
+            # Switch-style z-loss: mean(logsumexp(logits)^2) when logits available (matches training definition)
+            gate_logits = routing_info.get('gate_logits') or routing_info.get('routing_logits') or routing_info.get('router_logits')
+            if gate_logits is not None and torch.is_tensor(gate_logits) and gate_logits.numel() > 0:
+                try:
+                    logits_flat = gate_logits.view(-1, gate_logits.size(-1)).float()
+                    log_z = torch.logsumexp(logits_flat, dim=-1)
+                    layer_metrics['switch_z_loss'] = float((log_z ** 2).mean().item())
+                except Exception as e:
+                    if self.log_to_console:
+                        self._log_debug(f"Warning: Failed to calculate switch_z_loss for {layer_name}: {e}")
             
             # G3MoE specific metrics
             if 'speciality_loss' in routing_info and routing_info['speciality_loss'] is not None:
@@ -2177,7 +2190,12 @@ class TorchMoECallback:
         return collected
     
     def _log_metrics(self, metrics, current_step: int):
-        """메트릭 로깅"""
+        """메트릭 로깅.
+
+        고정 라우팅 KPI (CV/MaxVio 개선 검증용): avg_expert_cv, avg_maxvio,
+        avg_capacity_overflow_ratio, total_unused_experts, avg_expert_weighted_cv,
+        avg_expert_weighted_maxvio. 이 키들은 step별로 집계되어 로그에 기록됨.
+        """
         # 디버깅: 메트릭 계산 시작 (wandb에만 기록, console 출력 안 함)
         
         log_data = {}
@@ -2222,12 +2240,32 @@ class TorchMoECallback:
                             if isinstance(m, dict) and not isinstance(m, str) and 'unused_experts' in m]
             
             if cv_values:
-                log_data['moe/avg_expert_cv'] = np.mean(cv_values)
+                avg_cv = np.mean(cv_values)
+                log_data['moe/avg_expert_cv'] = avg_cv
+                self.cv_window.append(avg_cv)
+                if len(self.cv_window) >= 2:
+                    log_data['moe/cv_window_mean'] = float(np.mean(self.cv_window))
+                    log_data['moe/cv_window_std'] = float(np.std(self.cv_window))
             if entropy_values:
                 log_data['moe/avg_routing_entropy'] = np.mean(entropy_values)
+                log_data['moe/routing_entropy_floor'] = float(np.min(entropy_values))
             if unused_values:
-                log_data['moe/total_unused_experts'] = sum(unused_values)
-            
+                total_unused = sum(unused_values)
+                log_data['moe/total_unused_experts'] = total_unused
+                n_layers = len([m for m in metrics.values() if isinstance(m, dict) and not isinstance(m, str) and 'unused_experts' in m])
+                if n_layers > 0:
+                    log_data['moe/active_experts_avg'] = float(self.num_experts) - (total_unused / n_layers)
+
+            # CV + quality joint pass: pass when CV metrics present and quality defence (entropy, unused) not degraded
+            cv_quality_pass = 0.0
+            if "moe/avg_expert_cv" in log_data and "moe/avg_routing_entropy" in log_data and "moe/total_unused_experts" in log_data:
+                ent_ok = log_data["moe/avg_routing_entropy"] >= self.entropy_threshold
+                n_l = len([m for m in metrics.values() if isinstance(m, dict) and not isinstance(m, str) and "unused_experts" in m])
+                unused_frac = (log_data["moe/total_unused_experts"] / (n_l * self.num_experts)) if n_l and self.num_experts else 0.0
+                unused_ok = unused_frac <= self.unused_expert_threshold
+                cv_quality_pass = 1.0 if (ent_ok and unused_ok) else 0.0
+            log_data["moe/cv_quality_pass"] = cv_quality_pass
+
             # Pairwise Expert Similarity (PES)
             pes_values = [m['pairwise_expert_similarity']
                           for m in metrics.values()
@@ -2342,13 +2380,25 @@ class TorchMoECallback:
             if cap_overflow_values:
                 log_data['moe/avg_capacity_overflow_ratio'] = np.mean(cap_overflow_values)
             
-            # z-loss aggregation
-            zloss_values = [m['z_loss']
-                            for m in metrics.values()
-                            if isinstance(m, dict) and not isinstance(m, str)
-                            and 'z_loss' in m and m['z_loss'] is not None]
-            if zloss_values:
-                log_data['moe/avg_z_loss'] = np.mean(zloss_values)
+            # routing_sharpness_metric aggregation (prob-based)
+            sharpness_values = [m['routing_sharpness_metric']
+                               for m in metrics.values()
+                               if isinstance(m, dict) and not isinstance(m, str)
+                               and 'routing_sharpness_metric' in m and m['routing_sharpness_metric'] is not None]
+            if sharpness_values:
+                log_data['moe/avg_routing_sharpness_metric'] = np.mean(sharpness_values)
+            # Switch-style z-loss aggregation (logits-based; matches training)
+            switch_zloss_values = [m['switch_z_loss']
+                                  for m in metrics.values()
+                                  if isinstance(m, dict) and not isinstance(m, str)
+                                  and 'switch_z_loss' in m and m['switch_z_loss'] is not None]
+            if switch_zloss_values:
+                log_data['moe/avg_switch_z_loss'] = np.mean(switch_zloss_values)
+            # Backward compat: avg_z_loss = switch definition when available, else sharpness metric
+            if switch_zloss_values:
+                log_data['moe/avg_z_loss'] = np.mean(switch_zloss_values)
+            elif sharpness_values:
+                log_data['moe/avg_z_loss'] = np.mean(sharpness_values)
             
             # Routing variance aggregation (None이 아닌 값만 포함)
             routing_variance_values = [m['routing_variance'] 

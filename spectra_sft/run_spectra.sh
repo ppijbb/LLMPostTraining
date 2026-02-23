@@ -9,6 +9,10 @@
 
 set -e
 
+# JIT cpp_extension: set before any Python runs so all archs aren't compiled (avoids hang/slow compile).
+# Override with SPECTRA_CUDA_ARCH if needed (e.g. 9.0 for H100).
+export TORCH_CUDA_ARCH_LIST="${SPECTRA_CUDA_ARCH:-8.0}"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -130,7 +134,6 @@ export DS_ENABLE_TP=1
 export ACCELERATE_USE_DEEPSPEED=1
 export ACCELERATE_DISTRIBUTED_TYPE=DEEPSPEED
 export ACCELERATE_DISABLE_RICH=0
-export TORCH_CUDA_ARCH_LIST="8.0"
 export SAFETENSORS_FAST_GPU=1
 export HF_ENABLE_PARALLEL_LOADING=1
 export HF_PARALLEL_LOADING_WORKERS=$NUM_GPUS
@@ -145,6 +148,8 @@ mkdir -p "$OUTPUT_DIR"
 
 echo -e "${YELLOW}Output Directory:${NC} $OUTPUT_DIR"
 echo -e "${YELLOW}CUDA Devices:${NC} $CUDA_VISIBLE_DEVICES"
+echo -e "${BLUE}Routing KPI (CV-first): moe/avg_expert_cv, moe/cv_window_mean, moe/cv_window_std, moe/avg_maxvio${NC}"
+echo -e "${BLUE}CV+Quality pass: moe/cv_quality_pass=1 when CV stable and quality defence (entropy floor, active_experts, unused_experts) not degraded${NC}"
 if [ "$RUN_BASELINE" = "1" ]; then
     echo -e "${YELLOW}[baseline] SPECTRA_DISABLE_ALL=1 → Qwen3 원래 MoE만 사용 (backward 에러 회피)${NC}"
 fi

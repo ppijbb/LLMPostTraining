@@ -27,7 +27,7 @@ import contextlib
 from functools import partial
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union, Type
+from typing import Dict, List, Optional, Tuple, Union, Type
 
 from tqdm.auto import tqdm
 
@@ -1014,18 +1014,25 @@ class SPECTRARouter(nn.Module):
         nn.init.orthogonal_(self.expert_codebook)
         
         # [3] Agentic Load Balancing (DeepSeek ALF + GLN)
-        # Persistent Bias Buffer
+        # Persistent Bias Buffer (general per-expert bias)
         self.register_buffer("expert_bias", torch.zeros(self.num_experts))
+        # Primal-Dual: capacity dual penalty (overload -> subtract from logits pre-topk)
+        self.register_buffer("dual_lambda", torch.zeros(self.num_experts))
+        self._dual_eta_base = getattr(config, "dual_eta_base", 0.02)
+        self._dual_lambda_max = getattr(config, "dual_lambda_max", 2.0)
         
-        # GLN Parameters (Gate Logit Normalization)
-        self.lambda_gln = nn.Parameter(torch.tensor(10.0)) # Learnable scale, init high for sharpness
+        # GLN Parameters (Gate Logit Normalization) — init lower for stability-first
+        self.lambda_gln = nn.Parameter(torch.tensor(getattr(config, "lambda_gln_init", 5.0)))
         
         # Update Hypers
         self.bias_update_rate = 0.001 
         self.temperature = 0.1
 
-        # [Gradient Checkpointing] Deferred bias updates
-        self._bias_delta_acc = None
+        # [Gradient Checkpointing] Deferred per-layer updates (overwrite, not accumulate)
+        self._delta_per_layer: Dict[int, torch.Tensor] = {}
+        self._cv_per_layer: Dict[int, float] = {}
+        self._maxvio_per_layer: Dict[int, float] = {}
+        self._load_frac_per_layer: Dict[int, torch.Tensor] = {}
 
         # Curriculum / step tracking (align with trainable_spectra so step 1 is reachable)
         self.curriculum_steps = getattr(config, "curriculum_steps", 10000)
@@ -1036,27 +1043,211 @@ class SPECTRARouter(nn.Module):
         self.register_buffer("max_vio_ema", torch.tensor(0.0))
         self.cv_ema_alpha = 0.95
         self.max_vio_ema_alpha = 0.95
-        # Non-increasing guarantee: running minimum (ceiling). EMA is clamped so it never exceeds this.
-        self.register_buffer("cv_ema_peak", torch.tensor(1.0))
-        self.register_buffer("max_vio_ema_peak", torch.tensor(10.0))
+        self._proportional_correction_strength = getattr(config, "proportional_correction_strength", 0.5)
+        self._soft_barrier_coef = getattr(config, "soft_barrier_coef", 0.15)
+        # [Stability] Per-step bias update cap to avoid CV/maxvio spikes from overshoot
+        self._max_step_bias_delta = getattr(config, "max_step_bias_delta", 0.5)
+        self._max_correction_abs = getattr(config, "max_correction_abs", 0.4)
+        # [Spike control] Trimmed-mean trim ratio (drop top/bottom this fraction of layers)
+        self._trim_ratio = getattr(config, "bias_trim_ratio", 0.2)
+        # [Spike control] Hysteresis: scale down update when pushing bias further in same direction
+        self._hysteresis_same = getattr(config, "bias_hysteresis_same", 0.6)
+        # [Intent damping] Smoothed gain for controller path (gain-up / decay-down); updated only in flush
+        self.register_buffer("_intent_gain_smoothed", torch.tensor(1.0))
+        self._intent_desired_per_layer: Dict[int, float] = {}
+        self._intent_gain_rise = getattr(config, "intent_gain_rise", 0.35)
+        self._intent_gain_decay = getattr(config, "intent_gain_decay", 0.12)
+        self._intent_gain_clip_min = getattr(config, "intent_gain_clip_min", 0.6)
+        self._intent_gain_clip_max = getattr(config, "intent_gain_clip_max", 1.5)
+        # Hard capacity allocator (CV-first)
+        self._hard_capacity_enabled = getattr(config, "hard_capacity_enabled", True)
+        self._hard_capacity_factor = getattr(config, "hard_capacity_factor", 1.0)
+        self._intent_reserve_frac = getattr(config, "intent_reserve_frac", 0.5)
+        # Quality-aware trust region (limit step-to-step load change)
+        self.register_buffer("_last_load_frac", torch.zeros(self.num_experts))
+        self._trust_region_coef = getattr(config, "trust_region_coef", 0.1)
+        # Deferred stats for flush (hard overflow / reassignment)
+        self._overflow_count_per_layer: Dict[int, int] = {}
+        self._reassignment_count_per_layer: Dict[int, int] = {}
+
+    def _hard_capacity_assign(
+        self,
+        biased_logits: torch.Tensor,
+        N: int,
+        E: int,
+        k: int,
+        intent_expert_scores: Optional[torch.Tensor],
+        intent_strength_per_token: Optional[torch.Tensor],
+    ):
+        """Capacity-constrained top-k: reassign overflow to next-best expert. Returns (topk_indices, topk_weights, usage, reassignment_count)."""
+        device = biased_logits.device
+        dtype = biased_logits.dtype
+        cap = max(1, int(math.ceil((N * k / E) * self._hard_capacity_factor)))
+        topk_weights, topk_indices = torch.topk(biased_logits, k, dim=-1)
+        usage = torch.zeros(E, device=device, dtype=torch.long)
+        for idx in topk_indices.reshape(-1):
+            usage[idx] += 1
+        reassignment_count = 0
+        over = (usage > cap).nonzero(as_tuple=True)[0]
+        while over.numel() > 0:
+            reassigned_this_round = False
+            e = over[0].item()
+            excess = (usage[e] - cap).item()
+            token_slot = (topk_indices == e).nonzero(as_tuple=True)[0]
+            if token_slot.numel() == 0:
+                break
+            t_flat = (topk_indices == e).nonzero(as_tuple=False)
+            if t_flat.size(0) < excess:
+                excess = t_flat.size(0)
+            scores_e = biased_logits[t_flat[:, 0], e].clone()
+            _, order = torch.sort(scores_e)
+            to_reassign = t_flat[order[:excess]]
+            for ii in range(to_reassign.size(0)):
+                t_idx, slot = to_reassign[ii, 0].item(), to_reassign[ii, 1].item()
+                chosen = set(topk_indices[t_idx].tolist())
+                logits_t = biased_logits[t_idx].clone()
+                for c in range(E):
+                    if c in chosen or usage[c].item() >= cap:
+                        logits_t[c] = -1e9
+                new_e = logits_t.argmax().item()
+                if logits_t[new_e].item() <= -1e9:
+                    continue
+                topk_indices[t_idx, slot] = new_e
+                usage[e] -= 1
+                usage[new_e] += 1
+                reassignment_count += 1
+                reassigned_this_round = True
+            if not reassigned_this_round:
+                break
+            over = (usage > cap).nonzero(as_tuple=True)[0]
+        if intent_expert_scores is not None and intent_strength_per_token is not None and N > 0:
+            n_reserve = max(1, int(N * self._intent_reserve_frac))
+            _, strong_idx = torch.topk(intent_strength_per_token, min(n_reserve, N))
+            for t_idx in strong_idx.tolist():
+                e_star = intent_expert_scores[t_idx].argmax().item()
+                if e_star in set(topk_indices[t_idx].tolist()):
+                    continue
+                if usage[e_star].item() >= cap:
+                    continue
+                slot = topk_weights[t_idx].argmin().item()
+                old_e = topk_indices[t_idx, slot].item()
+                topk_indices[t_idx, slot] = e_star
+                usage[old_e] -= 1
+                usage[e_star] += 1
+                reassignment_count += 1
+        usage_float = usage.to(dtype)
+        topk_weights_out = biased_logits.gather(-1, topk_indices)
+        return topk_indices, topk_weights_out, usage_float, reassignment_count
 
     def _increment_step(self):
         if self.training:
             self.training_step.add_(1)
 
     def flush_bias_updates(self):
-        """Apply accumulated bias delta with anti-windup and adaptive clamp."""
-        acc = getattr(self, "_bias_delta_acc", None)
-        if acc is not None:
-            with torch.no_grad():
-                # Adaptive clamp: tighter when cv/maxvio low to avoid overshoot
+        """Apply deferred per-layer state updates (bias delta, EMA, step).
+
+        Called once per training step BEFORE the next forward pass.
+        This is the ONLY place where cv_ema, max_vio_ema, expert_bias,
+        training_step, and _intent_gain_smoothed are mutated (no collectives
+        in forward, no extra [N,E] allocations), guaranteeing checkpoint safety.
+        """
+        with torch.no_grad():
+            # 1. Step increment
+            self.training_step.add_(1)
+
+            # 2. EMA updates from per-layer observations
+            cv_obs = self._cv_per_layer
+            if cv_obs:
+                avg_cv = sum(cv_obs.values()) / len(cv_obs)
+                self.cv_ema.mul_(self.cv_ema_alpha).add_(avg_cv * (1.0 - self.cv_ema_alpha))
+                cv_obs.clear()
+            mvio_obs = self._maxvio_per_layer
+            if mvio_obs:
+                avg_mvio = sum(mvio_obs.values()) / len(mvio_obs)
+                self.max_vio_ema.mul_(self.max_vio_ema_alpha).add_(avg_mvio * (1.0 - self.max_vio_ema_alpha))
+                mvio_obs.clear()
+
+            # 2b. Dual update (CV-first): eta driven by cv_ema, max_vio_ema; soften when reassignment is high (quality guard)
+            load_frac_map = self._load_frac_per_layer
+            reassign_map = getattr(self, "_reassignment_count_per_layer", {})
+            avg_reassign = (sum(reassign_map.values()) / len(reassign_map)) if reassign_map else 0
+            if reassign_map:
+                reassign_map.clear()
+            if load_frac_map:
+                E = self.dual_lambda.size(0)
+                target_frac = 1.0 / E
+                cv = float(self.cv_ema.clamp(min=0.05, max=5.0).item())
+                mvio = float(self.max_vio_ema.clamp(min=0.01, max=5.0).item())
+                eta = self._dual_eta_base * (1.0 + 0.3 * cv) * (1.0 + 0.1 * mvio)
+                reassign_thresh = getattr(self.config, "reassignment_soften_threshold", 500)
+                if avg_reassign > reassign_thresh:
+                    eta = eta * 0.5
+                layers_sorted = sorted(load_frac_map.keys())
+                stacked = torch.stack([load_frac_map[i] for i in layers_sorted], dim=0)
+                L = stacked.size(0)
+                if L > 2:
+                    trim_r = self._trim_ratio
+                    low = max(0, int(L * trim_r))
+                    high = min(L, L - int(L * trim_r))
+                    if high <= low:
+                        high = low + 1
+                    sorted_frac = stacked.sort(dim=0)[0]
+                    mean_load_frac = sorted_frac[low:high].mean(dim=0)
+                else:
+                    mean_load_frac = stacked.mean(dim=0)
+                excess = (mean_load_frac - target_frac).to(self.dual_lambda.dtype)
+                self.dual_lambda.add_(eta * excess)
+                self.dual_lambda.clamp_(min=0.0, max=self._dual_lambda_max)
+                self._last_load_frac.copy_(mean_load_frac)
+                load_frac_map.clear()
+
+            # 3. Bias delta: trimmed-mean over layers + slew-rate + hysteresis (spike suppression)
+            delta_map = self._delta_per_layer
+            if delta_map:
+                layers_sorted = sorted(delta_map.keys())
+                stacked = torch.stack([delta_map[i] for i in layers_sorted], dim=0)
+                L = stacked.size(0)
+                if L > 2:
+                    trim_r = self._trim_ratio
+                    low = max(0, int(L * trim_r))
+                    high = min(L, L - int(L * trim_r))
+                    if high <= low:
+                        high = low + 1
+                    sorted_deltas = stacked.sort(dim=0)[0]
+                    total_delta = sorted_deltas[low:high].mean(dim=0)
+                else:
+                    total_delta = stacked.mean(dim=0)
+                max_d = self._max_step_bias_delta
+                total_delta = total_delta.clamp(-max_d, max_d)
+                # Hysteresis: reduce update when bias is moving further in same direction
+                same_sign = (total_delta * self.expert_bias).gt(0)
+                scale = torch.where(same_sign, torch.full_like(total_delta, self._hysteresis_same), torch.ones_like(total_delta))
+                total_delta = total_delta * scale
                 cv = float(self.cv_ema.clamp(max=2.0).item())
                 mvio = float(self.max_vio_ema.clamp(max=2.0).item())
+                avg_imbalance = (cv + mvio) * 0.5
+                if avg_imbalance > 1.0:
+                    lpf = getattr(self.config, "bias_update_lpf_high_imbalance", 0.75)
+                    total_delta = total_delta * lpf
                 clamp_mag = 10.0 + 10.0 * (cv + mvio) / 2.0
                 clamp_mag = min(max(clamp_mag, 6.0), 20.0)
-                self.expert_bias.add_(acc)
+                self.expert_bias.add_(total_delta)
                 self.expert_bias.clamp_(min=-clamp_mag, max=clamp_mag)
-            acc.zero_()
+                delta_map.clear()
+
+            # 4. Intent gain damping (asymmetric low-pass: gain-up / decay-down)
+            desired_map = self._intent_desired_per_layer
+            if desired_map:
+                desired = sum(desired_map.values()) / len(desired_map)
+                current = float(self._intent_gain_smoothed.clamp(0.0, 2.0).item())
+                if desired > current:
+                    alpha = self._intent_gain_rise
+                else:
+                    alpha = self._intent_gain_decay
+                new_val = current + alpha * (desired - current)
+                new_val = min(self._intent_gain_clip_max, max(self._intent_gain_clip_min, new_val))
+                self._intent_gain_smoothed.fill_(new_val)
+                desired_map.clear()
 
     def compute_affinity_loss(self):
         # Orthogonality of Expert Codes
@@ -1068,65 +1259,47 @@ class SPECTRARouter(nn.Module):
     def forward(self, x, hn=None, top_k=2, jitter_eps=0.01, step_frac=0.0, layer_idx=0):
         """
         Agentic SPECTRA Routing (ALF + GLN + Global Intent)
-        """
-        # [ZeRO-3 Collective Safety] No manual p.all_gather() in routing path; DS hooks gather params.
-        # Any dist.all_reduce must be hit by all ranks unconditionally (same branch every rank).
-        # NOTE: Manual Hydration (p.all_gather()) is NOT needed here because
-        # SPECTRAMoE is registered as a ZeRO-3 leaf_module in deepspeed_zero3.json.
-        # The leaf module pre-forward hook automatically gathers ALL descendant parameters
-        # (including Router's) before forward() runs.
-        # Adding manual all_gather() creates duplicate collectives that deadlock
-        # during gradient checkpointing recompute.
 
-        if self.training:
-            self._increment_step()
+        [CHECKPOINT SAFETY] This method is 100% mutation-free.
+        No in-place modification of cv_ema, max_vio_ema, expert_bias, training_step.
+        All state updates are deferred to flush_bias_updates() called once per training step.
+        This guarantees gradient checkpoint recompute produces identical tensors.
+        """
         batch_size, seq_len, _ = x.shape
         x_flat = x.view(-1, self.hidden_size)
         N = x_flat.size(0)
         E = self.num_experts
-        k = self.config.num_experts_per_tok # Use config k, ignore Arg if needed
-        
+        k = self.config.num_experts_per_tok
+
         zero = x_flat.sum() * 0.0
-        
-        # [Deadlock Prevention]
+
         is_dummy_batch = (N == 0)
         if is_dummy_batch:
-            # Create dummy to force connectivity
             x_flat = torch.zeros(1, self.hidden_size, device=x.device, dtype=x.dtype)
             N = 1
             batch_size = 1
 
         # ----------------------------------------------------------------
-        # 1. Global Intent Injection (Memory-Efficient: single pooling, no GRU loop)
+        # 1. Global Intent Injection
         # ----------------------------------------------------------------
-        # Mean-pool the full sequence to get batch-level intent (1 matmul, not 64 GRU steps)
-        intent_batch = self.context_cell(x)  # [B, H] - handles 3D input internally
-        # Broadcast to all tokens: [B, H] -> [N, H]
+        intent_batch = self.context_cell(x)
         intent = intent_batch.unsqueeze(1).expand(-1, seq_len, -1).reshape(-1, self.hidden_size)
         if is_dummy_batch:
             intent = torch.zeros_like(x_flat)
 
-        # Priority from Intent + Current State
         priority_scores = self.priority_proj(x_flat + intent)
 
         # ----------------------------------------------------------------
-        # 2. Semantic Affinity (Sigmoid + Ortho)
+        # 2. Semantic Affinity
         # ----------------------------------------------------------------
         x_norm = F.normalize(x_flat, p=2, dim=-1)
         codebook = self.expert_codebook.to(x.dtype)
         codes_norm = F.normalize(codebook, p=2, dim=1)
-        
-        # Cosine Similarity -> Sigmoid (DeepSeek ALF style standardizes range 0-1)
-        semantic_logits = F.linear(x_norm, codes_norm) 
-        # semantic_logits = torch.sigmoid(semantic_logits) # Sigmoid not typically used with Linear directly, 
-        # DeepSeek uses Sigmoid on the final logits or as a gate. 
-        # Here we stick to Linear for Logits but use GLN to normalize.
-        
-        # Base Logits
+        semantic_logits = F.linear(x_norm, codes_norm)
         logits = semantic_logits + priority_scores
 
         # ----------------------------------------------------------------
-        # 2b. Intent control signals for controller (normalized, bounded)
+        # 2b. Intent control signals (read-only, no mutation)
         # ----------------------------------------------------------------
         with torch.no_grad():
             if is_dummy_batch:
@@ -1140,116 +1313,118 @@ class SPECTRARouter(nn.Module):
                 )
 
         # ----------------------------------------------------------------
-        # 3. Gate Logit Normalization (GLN - Skywork) + CV + intent stability
+        # 2c. Expert-level centering
+        # ----------------------------------------------------------------
+        expert_pop = logits.mean(dim=0, keepdim=True)
+        logits = logits - expert_pop
+
+        # ----------------------------------------------------------------
+        # 3. GLN + CV-conditioned sharpness (read-only snapshot of cv_ema)
         # ----------------------------------------------------------------
         mean_logits = logits.mean(dim=-1, keepdim=True)
         std_logits = logits.std(dim=-1, keepdim=True) + 1e-6
-        # CV + intent-conditioned sharpness (bounded to avoid perplexity hit)
-        if self.training and hasattr(self, "cv_ema"):
-            cv_val = float(self.cv_ema.clamp(max=2.0).item())
-            cv_factor = min(1.1, max(0.9, 1.0 + 0.05 * cv_val))
-            intent_factor = min(1.1, max(0.9, 1.0 + 0.05 * intent_concentration))
+        # Read-only snapshot; narrow CV/intent factors for stability (less swing)
+        _cv = float(self.cv_ema.clamp(max=2.0).item()) if self.training else 0.0
+        if self.training:
+            cv_factor = min(1.05, max(0.95, 1.0 + 0.02 * _cv))
+            intent_factor = min(1.05, max(0.95, 1.0 + 0.02 * intent_concentration))
             lambda_eff = self.lambda_gln * cv_factor * intent_factor
         else:
             lambda_eff = self.lambda_gln
         logits_norm = lambda_eff * (logits - mean_logits) / std_logits
-        
-        # Deterministic Jitter
+
         if self.training and jitter_eps > 0:
             seed = (layer_idx * 16381 + N * 31 + E * 7) % (2**31)
             gen = torch.Generator(device=x.device).manual_seed(int(seed))
             logits_norm = logits_norm + torch.empty_like(logits_norm).uniform_(-jitter_eps, jitter_eps, generator=gen)
 
         # ----------------------------------------------------------------
-        # 4. Agentic Load Balancing (DeepSeek V3 Sign-Update)
+        # 4. Pre-TopK: bias + dual_lambda penalty (constraint before selection)
         # ----------------------------------------------------------------
-        # Add Bias
-        biased_logits = logits_norm + self.expert_bias.unsqueeze(0)
-        
-        # [Deadlock Prevention] Always compute local_load and run all_reduce when dist is up,
-        # so all ranks participate in the same collective regardless of self.training.
-        with torch.no_grad():
-            probs = F.softmax(biased_logits.float(), dim=-1)
-            if is_dummy_batch:
-                local_load = torch.zeros(E, device=x.device, dtype=probs.dtype)
-            else:
-                local_load = probs.sum(0)
-            if dist.is_initialized():
-                dist.all_reduce(local_load, op=dist.ReduceOp.SUM)
+        biased_logits = logits_norm + self.expert_bias.unsqueeze(0) - self.dual_lambda.unsqueeze(0)
+
+        if self._hard_capacity_enabled and not is_dummy_batch:
+            with torch.no_grad():
+                intent_expert_scores_flat = F.linear(intent, codes_norm)
+                intent_strength_flat = intent.norm(dim=-1)
+                topk_indices, topk_weights, local_load, reassignment_count = self._hard_capacity_assign(
+                    biased_logits, N, E, k, intent_expert_scores_flat, intent_strength_flat
+                )
+            load_frac = local_load / (local_load.sum() + 1e-6)
+            self._load_frac_per_layer[layer_idx] = load_frac.detach().clone()
+            self._reassignment_count_per_layer[layer_idx] = reassignment_count
+        else:
+            with torch.no_grad():
+                if is_dummy_batch:
+                    local_load = torch.zeros(E, device=x.device, dtype=biased_logits.dtype)
+                else:
+                    _, topk_for_load = torch.topk(biased_logits, k=k, dim=-1)
+                    topk_flat = topk_for_load.reshape(-1)
+                    local_load = torch.zeros(E, device=x.device, dtype=biased_logits.dtype)
+                    local_load.scatter_add_(0, topk_flat, torch.ones_like(topk_flat, dtype=biased_logits.dtype))
+
+            if not is_dummy_batch:
+                total_load = local_load.sum() + 1e-6
+                load_frac = local_load / total_load
+                self._load_frac_per_layer[layer_idx] = load_frac.detach().clone()
+                target_frac = 1.0 / E
+                correction_scale = getattr(self.config, "proportional_correction_secondary_scale", 0.25)
+                with torch.no_grad():
+                    correction = -(load_frac - target_frac).to(biased_logits.dtype) * self._proportional_correction_strength * correction_scale
+                    correction = correction.clamp(-self._max_correction_abs, self._max_correction_abs)
+                    barrier = -(load_frac - target_frac).to(biased_logits.dtype) * self._soft_barrier_coef * correction_scale
+                biased_logits = biased_logits + correction.unsqueeze(0) + barrier.unsqueeze(0)
+
+            topk_weights, topk_indices = torch.topk(biased_logits, k=k, dim=-1)
+
+        # ----------------------------------------------------------------
+        # 5b. Deferred state observations (overwrite per layer_idx, no in-place EMA mutation)
+        # ----------------------------------------------------------------
         if self.training and not is_dummy_batch:
             with torch.no_grad():
-                # CV/maxvio EMA update (lightweight port from trainable_spectra)
                 total_load = local_load.sum()
                 if total_load > 0:
                     expert_dist = local_load / total_load
                     mean_p = expert_dist.mean()
                     var_p = expert_dist.var(unbiased=False)
                     current_cv = (var_p.sqrt() / (mean_p + 1e-6)).item()
-                    self.cv_ema.mul_(self.cv_ema_alpha).add_(current_cv * (1.0 - self.cv_ema_alpha))
                     target_col = total_load / E
-                    col_vio = (local_load - target_col).abs().max().item()
-                    self.max_vio_ema.mul_(self.max_vio_ema_alpha).add_(col_vio * (1.0 - self.max_vio_ema_alpha))
-                    # Non-increasing: clamp EMA to running minimum so CV/maxvio never rise with dataset
-                    self.cv_ema.copy_(torch.minimum(self.cv_ema, self.cv_ema_peak))
-                    self.cv_ema_peak.copy_(torch.minimum(self.cv_ema_peak, self.cv_ema))
-                    self.max_vio_ema.copy_(torch.minimum(self.max_vio_ema, self.max_vio_ema_peak))
-                    self.max_vio_ema_peak.copy_(torch.minimum(self.max_vio_ema_peak, self.max_vio_ema))
+                    target_safe = max(float(target_col.item()), 1e-8)
+                    col_vio_abs = (local_load - target_col).abs().max().item()
+                    col_vio_ratio = col_vio_abs / target_safe
+                    self._cv_per_layer[layer_idx] = current_cv
+                    self._maxvio_per_layer[layer_idx] = col_vio_ratio
+
         if self.training:
             with torch.no_grad():
-                # Target (Uniform)
+                _cv_snap = float(self.cv_ema.clamp(min=0.1, max=5.0).item())
+                _mvio_snap = float(self.max_vio_ema.clamp(min=0.01, max=5.0).item())
                 target = local_load.sum() / E
-                # Load Error
                 load_error = local_load - target
-                # Magnitude-aware: normalized_error (safe clamp) and adaptive_rate (cv/maxvio-based)
-                target_safe = target.item() if target.dim() == 0 else target
-                scale_safe = max(float(target_safe) + 1e-6, 1e-6)
-                normalized_error = (load_error / scale_safe).clamp(-2.0, 2.0)
-                cv_scale = float(self.cv_ema.clamp(min=0.1, max=5.0).item())
-                maxvio_scale = float(self.max_vio_ema.clamp(min=0.01, max=5.0).item())
-                adaptive_rate = self.bias_update_rate * cv_scale * min(1.0 + maxvio_scale * 0.2, 2.0)
-                intent_gain = min(1.5, 1.0 + 0.2 * intent_strength + 0.15 * intent_concentration)
-                if float(self.cv_ema.item()) > 0.5 or float(self.max_vio_ema.item()) > 0.5:
-                    intent_gain = intent_gain * min(1.4, 1.0 + 0.2 * intent_concentration)
-                adaptive_rate = adaptive_rate * intent_gain
-                adaptive_rate = min(adaptive_rate, 0.01)
+                target_safe = max(float(target.item()), 1e-6)
+                normalized_error = (load_error / target_safe).clamp(-2.0, 2.0)
+                adaptive_rate = self.bias_update_rate * _cv_snap * min(1.0 + _mvio_snap * 0.2, 2.0)
+                raw_intent_gain = min(1.5, 1.0 + 0.2 * intent_strength + 0.15 * intent_concentration)
+                if _cv_snap > 0.5 or _mvio_snap > 0.5:
+                    damp = getattr(self.config, "intent_imbalance_damp", 0.85)
+                    raw_intent_gain = raw_intent_gain * damp
+                self._intent_desired_per_layer[layer_idx] = raw_intent_gain
+                effective_gain = float(self._intent_gain_smoothed.clamp(self._intent_gain_clip_min, self._intent_gain_clip_max).item())
+                adaptive_rate = min(adaptive_rate * effective_gain, 0.01)
                 delta = -adaptive_rate * normalized_error.to(self.expert_bias.dtype)
-                if self._bias_delta_acc is None:
-                    self._bias_delta_acc = torch.zeros(E, device=x.device, dtype=self.expert_bias.dtype)
-                self._bias_delta_acc.add_(delta)
+                self._delta_per_layer[layer_idx] = delta.detach().clone()
 
         # ----------------------------------------------------------------
-        # 4b. Overload-aware penalty/boost (routing only, not a loss)
+        # 6. Routing weights (narrow temp range for stability)
         # ----------------------------------------------------------------
-        if not is_dummy_batch and self.training:
-            with torch.no_grad():
-                total_load = local_load.sum()
-                target_load = total_load / E
-                margin = 0.15
-                over = local_load > (target_load * (1.0 + margin))
-                under = local_load < (target_load * (1.0 - margin))
-                pen_scale = 0.3 * float(self.max_vio_ema.clamp(min=0.01, max=2.0).item())
-                pen_scale = pen_scale * min(1.4, 1.0 + 0.15 * intent_strength + 0.1 * intent_concentration)
-                overload_penalty = torch.zeros(E, device=x.device, dtype=biased_logits.dtype)
-                overload_penalty = overload_penalty.masked_fill(over, -pen_scale)
-                overload_penalty = overload_penalty.masked_fill(under, pen_scale * 0.5)
-            biased_logits = biased_logits + overload_penalty.unsqueeze(0)
-
-        # ----------------------------------------------------------------
-        # 5. Top-K Selection & Output (temperature bounded for stability)
-        # ----------------------------------------------------------------
-        topk_weights, topk_indices = torch.topk(biased_logits, k=k, dim=-1)
-        # Softmax temperature: CV + intent-conditioned (bounded)
-        if self.training and hasattr(self, "cv_ema"):
-            temp = min(1.2, max(1.0, 1.0 + 0.1 * float(self.cv_ema.clamp(max=2.0).item())))
-            temp = temp * min(1.15, max(0.95, 1.0 + 0.05 * intent_strength))
+        if self.training:
+            temp = min(1.08, max(1.0, 1.0 + 0.04 * _cv))
+            temp = temp * min(1.05, max(0.98, 1.0 + 0.02 * intent_strength))
             topk_weights = topk_weights / temp
         routing_weights = F.softmax(topk_weights, dim=-1).to(dtype=x.dtype)
 
-        # [OOM Fix] Return biased_logits (already [N,E]) as router_logits slot instead of
-        # allocating routing_probs_full; loss applies softmax internally. Saves one [N,E] per layer.
         router_logits_out = biased_logits
 
-        # Losses: ortho only (speciality/entropy from elsewhere). balance_loss path removed per plan.
         ortho_loss = self.compute_affinity_loss() * 0.05
         if is_dummy_batch:
             load_balancing_loss = zero
@@ -1266,19 +1441,25 @@ class SPECTRARouter(nn.Module):
                 lb_topk_cv_coef=getattr(self.config, "lb_topk_cv_coef", 0.07),
                 attention_mask=None,
             )
-            balance_loss = zero  # removed: CV/maxvio via router bias/EMA only, no balance loss term
+            load_frac = self._load_frac_per_layer.get(layer_idx)
+            if load_frac is not None and self.training:
+                trust_region_loss = self._trust_region_coef * (load_frac - self._last_load_frac).pow(2).sum()
+                load_balancing_loss = load_balancing_loss + trust_region_loss
+                balance_loss = trust_region_loss
+            else:
+                balance_loss = zero
 
         if is_dummy_batch:
              return (
                 torch.empty(0, k, device=x.device, dtype=routing_weights.dtype),
                 torch.empty(0, k, device=x.device, dtype=topk_indices.dtype),
-                None,  # expression_logits
-                torch.empty(0, self.hidden_size, device=x.device, dtype=x.dtype),  # hn
+                None,
+                torch.empty(0, self.hidden_size, device=x.device, dtype=x.dtype),
                 zero, zero, zero,
                 torch.empty(0, E, device=x.device, dtype=biased_logits.dtype),
                 zero, zero, zero,
                 load_balancing_loss,
-                zero,  # sinkhorn_loss
+                zero,
                 ortho_loss,
                 balance_loss,
             )
@@ -1287,12 +1468,12 @@ class SPECTRARouter(nn.Module):
             routing_weights,
             topk_indices,
             None,
-            intent,  # Return intent as 'hn' context
+            intent,
             zero, zero, zero,
             router_logits_out,
             zero, zero, zero,
             load_balancing_loss,
-            zero,  # sinkhorn_loss
+            zero,
             ortho_loss,
             balance_loss,
         )

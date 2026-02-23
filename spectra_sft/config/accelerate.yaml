@@ -5,7 +5,7 @@ dynamo_backend: YES
 use_cpu: false
 downcast_bf16: 'no'
 enable_cpu_affinity: false
-num_processes: 4
+num_processes: 2
 num_machines: 1
 machine_rank: 0
 gpu_ids: all

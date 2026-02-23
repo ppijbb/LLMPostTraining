@@ -22,6 +22,14 @@ except ImportError:
 # [0vs2048] Global Participation Pool for v16 GAPH
 _PARTICIPATION_POOL = []
 
+# --- JIT cpp_extension: avoid multi-rank compile deadlock (must be before any torch import) ---
+# Each rank compiles in its own dir so no lock contention; unset TORCH_CUDA_ARCH_LIST triggers "all archs" + slow compile.
+if "TORCH_EXTENSION_DIR" not in os.environ:
+    _rank = os.environ.get("RANK", os.environ.get("LOCAL_RANK", "0"))
+    os.environ["TORCH_EXTENSION_DIR"] = f"/tmp/torch_ext_rank{_rank}"
+if "TORCH_CUDA_ARCH_LIST" not in os.environ:
+    os.environ["TORCH_CUDA_ARCH_LIST"] = os.environ.get("SPECTRA_CUDA_ARCH", "8.0")
+
 # --- Global Monkey Patches for ZeRO-3 Compatibility ---
 import torch.nn as nn
 
@@ -77,6 +85,27 @@ def _patch_nn_init():
             f_in, f_out = orig_calc(tensor)
             return max(1, f_in), max(1, f_out)
         torch_init._calculate_fan_in_and_fan_out = safe_calc
+
+# --- Patch DeepSpeed ZeRO-3: handle None grad in unscale_and_clip_grads ---
+# MoE sparse activation means unused experts have no gradient; their fp32 partition grad is None.
+# Mathematically correct: unused param -> gradient = 0.
+def _patch_deepspeed_none_grad():
+    try:
+        import torch as _t
+        from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
+        _orig_unscale = DeepSpeedZeroOptimizer_Stage3.unscale_and_clip_grads
+
+        def _safe_unscale(self, sub_group_id, scaled_global_grad_norm):
+            flat = self.fp32_partitioned_groups_flat[sub_group_id]
+            if flat.grad is None:
+                flat.grad = _t.zeros_like(flat)
+            return _orig_unscale(self, sub_group_id, scaled_global_grad_norm)
+
+        DeepSpeedZeroOptimizer_Stage3.unscale_and_clip_grads = _safe_unscale
+    except Exception:
+        pass
+
+_patch_deepspeed_none_grad()
 
 def _patch_qwen3_participation_guard():
     """
@@ -363,10 +392,10 @@ def _patch_trainer_for_participation_guard(trainer):
             
         loss = res[0] if return_outputs else res
         
-        # ROOT GUARD: Ensure every parameter shard participates
+        # ROOT GUARD: Ensure every parameter shard participates (ZeRO-3 safe: skip empty partitions to avoid "got [0] vs expected [N,M]" SumBackward0)
         guard = 0.0
         for p in model.parameters():
-            if p.requires_grad:
+            if p.requires_grad and p.numel() > 0:
                 guard = guard + (p.sum() * 0.0)
         
         # POOL GUARD: Ensure every skipped module (dummy forward) participates
@@ -2363,7 +2392,8 @@ def main(
         optimizers=(optimizer_for_trainer, None) if optimizer_for_trainer is not None else (None, None)
     )
     
-    # [DISABLED] RPG causes SumBackward0 invalid gradient (got [0] vs expected [151936,2048]) under ZeRO-3
+    # RPG disabled under ZeRO-3: p.sum()*0.0 does not trigger DS gradient hooks for partitioned params.
+    # Instead, patch unscale_and_clip_grads to treat None grad as zero (correct for unused MoE experts).
     # _patch_trainer_for_participation_guard(trainer)
     
     # CRITICAL: Verify and fix embedding layers after Trainer creation but before DeepSpeed engine init
