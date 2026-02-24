@@ -1020,6 +1020,8 @@ class SPECTRARouter(nn.Module):
         self.register_buffer("dual_lambda", torch.zeros(self.num_experts))
         self._dual_eta_base = getattr(config, "dual_eta_base", 0.02)
         self._dual_lambda_max = getattr(config, "dual_lambda_max", 2.0)
+        self._alf_gamma = getattr(config, "alf_gamma", 0.01)
+        self._alf_bias_max = getattr(config, "alf_bias_max", 10.0)
         
         # GLN Parameters (Gate Logit Normalization) — init lower for stability-first
         self.lambda_gln = nn.Parameter(torch.tensor(getattr(config, "lambda_gln_init", 5.0)))
@@ -1144,18 +1146,16 @@ class SPECTRARouter(nn.Module):
             self.training_step.add_(1)
 
     def flush_bias_updates(self):
-        """Apply deferred per-layer state updates (bias delta, EMA, step).
+        """Apply deferred per-layer state updates (EMA for monitoring + pure ALF sign-based bias).
 
-        Called once per training step BEFORE the next forward pass.
-        This is the ONLY place where cv_ema, max_vio_ema, expert_bias,
-        training_step, and _intent_gain_smoothed are mutated (no collectives
-        in forward, no extra [N,E] allocations), guaranteeing checkpoint safety.
+        DeepSeek-style Auxiliary-Loss-Free: single expert_bias updated by sign(load_error) * gamma.
+        No dual_lambda, no hysteresis/proportional correction/intent damping (removed to avoid conflict).
         """
         with torch.no_grad():
             # 1. Step increment
             self.training_step.add_(1)
 
-            # 2. EMA updates from per-layer observations
+            # 2. EMA updates from per-layer observations (monitoring only)
             cv_obs = self._cv_per_layer
             if cv_obs:
                 avg_cv = sum(cv_obs.values()) / len(cv_obs)
@@ -1167,87 +1167,28 @@ class SPECTRARouter(nn.Module):
                 self.max_vio_ema.mul_(self.max_vio_ema_alpha).add_(avg_mvio * (1.0 - self.max_vio_ema_alpha))
                 mvio_obs.clear()
 
-            # 2b. Dual update (CV-first): eta driven by cv_ema, max_vio_ema; soften when reassignment is high (quality guard)
+            # 3. Pure sign-based bias update (ALF)
             load_frac_map = self._load_frac_per_layer
-            reassign_map = getattr(self, "_reassignment_count_per_layer", {})
-            avg_reassign = (sum(reassign_map.values()) / len(reassign_map)) if reassign_map else 0
-            if reassign_map:
-                reassign_map.clear()
             if load_frac_map:
-                E = self.dual_lambda.size(0)
-                target_frac = 1.0 / E
-                cv = float(self.cv_ema.clamp(min=0.05, max=5.0).item())
-                mvio = float(self.max_vio_ema.clamp(min=0.01, max=5.0).item())
-                eta = self._dual_eta_base * (1.0 + 0.3 * cv) * (1.0 + 0.1 * mvio)
-                reassign_thresh = getattr(self.config, "reassignment_soften_threshold", 500)
-                if avg_reassign > reassign_thresh:
-                    eta = eta * 0.5
                 layers_sorted = sorted(load_frac_map.keys())
                 stacked = torch.stack([load_frac_map[i] for i in layers_sorted], dim=0)
-                L = stacked.size(0)
-                if L > 2:
-                    trim_r = self._trim_ratio
-                    low = max(0, int(L * trim_r))
-                    high = min(L, L - int(L * trim_r))
-                    if high <= low:
-                        high = low + 1
-                    sorted_frac = stacked.sort(dim=0)[0]
-                    mean_load_frac = sorted_frac[low:high].mean(dim=0)
-                else:
-                    mean_load_frac = stacked.mean(dim=0)
-                excess = (mean_load_frac - target_frac).to(self.dual_lambda.dtype)
-                self.dual_lambda.add_(eta * excess)
-                self.dual_lambda.clamp_(min=0.0, max=self._dual_lambda_max)
+                mean_load_frac = stacked.mean(dim=0)
+                mean_val = mean_load_frac.mean()
+                error = mean_load_frac - mean_val
+                gamma = self._alf_gamma
+                self.expert_bias.add_(gamma * error.sign().to(self.expert_bias.dtype))
+                self.expert_bias.clamp_(min=-self._alf_bias_max, max=self._alf_bias_max)
                 self._last_load_frac.copy_(mean_load_frac)
                 load_frac_map.clear()
 
-            # 3. Bias delta: trimmed-mean over layers + slew-rate + hysteresis (spike suppression)
-            delta_map = self._delta_per_layer
-            if delta_map:
-                layers_sorted = sorted(delta_map.keys())
-                stacked = torch.stack([delta_map[i] for i in layers_sorted], dim=0)
-                L = stacked.size(0)
-                if L > 2:
-                    trim_r = self._trim_ratio
-                    low = max(0, int(L * trim_r))
-                    high = min(L, L - int(L * trim_r))
-                    if high <= low:
-                        high = low + 1
-                    sorted_deltas = stacked.sort(dim=0)[0]
-                    total_delta = sorted_deltas[low:high].mean(dim=0)
-                else:
-                    total_delta = stacked.mean(dim=0)
-                max_d = self._max_step_bias_delta
-                total_delta = total_delta.clamp(-max_d, max_d)
-                # Hysteresis: reduce update when bias is moving further in same direction
-                same_sign = (total_delta * self.expert_bias).gt(0)
-                scale = torch.where(same_sign, torch.full_like(total_delta, self._hysteresis_same), torch.ones_like(total_delta))
-                total_delta = total_delta * scale
-                cv = float(self.cv_ema.clamp(max=2.0).item())
-                mvio = float(self.max_vio_ema.clamp(max=2.0).item())
-                avg_imbalance = (cv + mvio) * 0.5
-                if avg_imbalance > 1.0:
-                    lpf = getattr(self.config, "bias_update_lpf_high_imbalance", 0.75)
-                    total_delta = total_delta * lpf
-                clamp_mag = 10.0 + 10.0 * (cv + mvio) / 2.0
-                clamp_mag = min(max(clamp_mag, 6.0), 20.0)
-                self.expert_bias.add_(total_delta)
-                self.expert_bias.clamp_(min=-clamp_mag, max=clamp_mag)
-                delta_map.clear()
-
-            # 4. Intent gain damping (asymmetric low-pass: gain-up / decay-down)
-            desired_map = self._intent_desired_per_layer
-            if desired_map:
-                desired = sum(desired_map.values()) / len(desired_map)
-                current = float(self._intent_gain_smoothed.clamp(0.0, 2.0).item())
-                if desired > current:
-                    alpha = self._intent_gain_rise
-                else:
-                    alpha = self._intent_gain_decay
-                new_val = current + alpha * (desired - current)
-                new_val = min(self._intent_gain_clip_max, max(self._intent_gain_clip_min, new_val))
-                self._intent_gain_smoothed.fill_(new_val)
-                desired_map.clear()
+            # Clear deferred maps not used by ALF (avoid leak)
+            if self._delta_per_layer:
+                self._delta_per_layer.clear()
+            if self._intent_desired_per_layer:
+                self._intent_desired_per_layer.clear()
+            reassign_map = getattr(self, "_reassignment_count_per_layer", {})
+            if reassign_map:
+                reassign_map.clear()
 
     def compute_affinity_loss(self):
         # Orthogonality of Expert Codes
@@ -1339,9 +1280,9 @@ class SPECTRARouter(nn.Module):
             logits_norm = logits_norm + torch.empty_like(logits_norm).uniform_(-jitter_eps, jitter_eps, generator=gen)
 
         # ----------------------------------------------------------------
-        # 4. Pre-TopK: bias + dual_lambda penalty (constraint before selection)
+        # 4. Pre-TopK: unified bias only (DeepSeek ALF; dual_lambda removed to avoid conflict)
         # ----------------------------------------------------------------
-        biased_logits = logits_norm + self.expert_bias.unsqueeze(0) - self.dual_lambda.unsqueeze(0)
+        biased_logits = logits_norm + self.expert_bias.unsqueeze(0)
 
         if self._hard_capacity_enabled and not is_dummy_batch:
             with torch.no_grad():
@@ -1367,13 +1308,6 @@ class SPECTRARouter(nn.Module):
                 total_load = local_load.sum() + 1e-6
                 load_frac = local_load / total_load
                 self._load_frac_per_layer[layer_idx] = load_frac.detach().clone()
-                target_frac = 1.0 / E
-                correction_scale = getattr(self.config, "proportional_correction_secondary_scale", 0.25)
-                with torch.no_grad():
-                    correction = -(load_frac - target_frac).to(biased_logits.dtype) * self._proportional_correction_strength * correction_scale
-                    correction = correction.clamp(-self._max_correction_abs, self._max_correction_abs)
-                    barrier = -(load_frac - target_frac).to(biased_logits.dtype) * self._soft_barrier_coef * correction_scale
-                biased_logits = biased_logits + correction.unsqueeze(0) + barrier.unsqueeze(0)
 
             topk_weights, topk_indices = torch.topk(biased_logits, k=k, dim=-1)
 

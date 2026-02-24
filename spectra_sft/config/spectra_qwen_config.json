@@ -48,11 +48,11 @@
       "so_warmup_steps": 1000,
       "so_lambda_max": 0.001,
       "cosine_similarities_loss_coef": 0.0008,
-      "lb_l2_coef": 0.01,
-      "lb_cv_coef": 0.03,
+      "lb_l2_coef": 0.05,
+      "lb_cv_coef": 0.1,
       "lb_entropy_floor_coef": 0.0002,
-      "lb_topk_l2_coef": 0.06,
-      "lb_topk_cv_coef": 0.04,
+      "lb_topk_l2_coef": 0.1,
+      "lb_topk_cv_coef": 0.1,
       "speciality_loss_coef": 0.005,
       "contrastive_loss_coef": 1e-06,
       "expression_reg_loss_coef": 1.0,
@@ -66,11 +66,13 @@
       "dual_eta_base": 0.02,
       "dual_lambda_max": 2.0,
       "proportional_correction_secondary_scale": 0.25,
-      "hard_capacity_enabled": true,
+      "hard_capacity_enabled": false,
       "hard_capacity_factor": 1.0,
       "intent_reserve_frac": 0.5,
       "trust_region_coef": 0.1,
-      "reassignment_soften_threshold": 500
+      "reassignment_soften_threshold": 500,
+      "alf_gamma": 0.01,
+      "alf_bias_max": 10.0
     }
   },
   "_meta": {
