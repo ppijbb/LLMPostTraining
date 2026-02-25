@@ -1,0 +1,264 @@
+# SPECTRA 7-Day Evaluation Configuration
+# For ICML/NeurIPS Submission
+
+# ===== Model Configuration =====
+model:
+  checkpoint_path: "/path/to/spectra/checkpoint"  # USER MUST UPDATE
+  model_name: "SPECTRA-256E"
+  num_experts: 256
+  active_experts: 8  # top-k
+  router_type: "spectra"  # spectra, switch, mixtral
+  
+  # Model architecture details
+  hidden_size: 4096
+  num_layers: 32
+  vocab_size: 32000
+
+# ===== Compute Configuration =====
+compute:
+  num_gpus: 4
+  batch_size_per_gpu: 8
+  max_seq_length: 2048
+  use_bf16: true
+  use_fp16: false
+  use_flash_attention: true
+  
+  # Parallelism settings
+  tensor_parallel_size: 1
+  pipeline_parallel_size: 1
+  data_parallel_size: 4
+  
+  # Memory optimization
+  gradient_checkpointing: false
+  cpu_offload: false
+
+# ===== WandB Configuration =====
+wandb:
+  enabled: true
+  run_id: "bzrw39zy"  # USER MUST UPDATE
+  project: "spectra-training"
+  entity: null  # Leave null for default
+  
+  # For extracting training curves
+  extract_metrics:
+    - "moe/avg_expert_cv"
+    - "moe/avg_maxvio"
+    - "train/loss"
+    - "moe/avg_pairwise_expert_similarity"
+    - "moe/avg_gram_orthogonality"
+
+# ===== Output Configuration =====
+output:
+  base_dir: "./evaluation_results"
+  save_intermediate: true
+  generate_latex: true
+  generate_plots: true
+  
+  # Timestamped output folders
+  use_timestamp: true
+  timestamp_format: "%Y%m%d_%H%M%S"
+  
+  # Result versioning
+  save_config_copy: true
+  save_command_log: true
+
+# ===== Baseline Models Configuration =====
+baseline_models:
+  - name: "Mixtral-8x7B"
+    hf_path: "mistralai/Mixtral-8x7B-v0.1"
+    active_params: 13e9
+    total_params: 47e9
+    cache_dir: "./baselines/mixtral"
+    load_in_8bit: false
+    
+  - name: "LLaMA-3-8B"
+    hf_path: "meta-llama/Meta-Llama-3-8B"
+    active_params: 8e9
+    total_params: 8e9
+    cache_dir: "./baselines/llama3"
+    load_in_8bit: false
+
+# ===== D-Day: Sanity Check Configuration =====
+day0_sanity_check:
+  # Training dynamics extraction
+  extract_curves:
+    cv_curve: true
+    maxvio_curve: true
+    loss_curve: true
+    entropy_curve: true
+  
+  # Perplexity evaluation datasets
+  ppl_datasets:
+    - name: "wikitext-103"
+      split: "validation"
+      max_samples: 1000
+    - name: "pile"
+      split: "validation"
+      max_samples: 1000
+      subset: "all"
+    - name: "c4"
+      split: "validation"
+      max_samples: 1000
+  
+  # GO/NO-GO criteria
+  go_nogo_thresholds:
+    max_cv: 0.3  # CV should be < 0.3
+    max_maxvio: 0.15  # MaxVio should be < 0.15
+    min_ppl_improvement: 0.05  # Should be better than baseline
+
+# ===== D+1~2: Standard Benchmarks Configuration =====
+day1_2_benchmarks:
+  # lm-evaluation-harness tasks
+  tasks:
+    knowledge:
+      - "mmlu"
+    reasoning:
+      - "gsm8k"
+      - "arc_challenge"
+    commonsense:
+      - "hellaswag"
+      - "winogrande"
+    coding:
+      - "humaneval"
+      - "mbpp"
+  
+  # Shot configuration per category
+  shot_config:
+    knowledge: 5
+    reasoning: 8  # with CoT
+    commonsense: 5
+    coding: 0  # 0-shot for coding
+  
+  # Evaluation settings
+  batch_size: "auto"
+  num_workers: 4
+  limit: null  # null for full dataset
+  
+  # Compare with baselines
+  run_baselines: true
+  baseline_limit: null  # null for full dataset
+
+# ===== D+3~4: Expert Analysis Configuration =====
+day3_4_expert_analysis:
+  # Domain-specific data
+  domains:
+    arxiv:
+      source: "arxiv"
+      num_samples: 100
+      keywords: ["machine learning", "deep learning", "neural networks"]
+    github:
+      source: "github_code"
+      num_samples: 100
+      languages: ["python", "javascript", "java"]
+    novels:
+      source: "bookcorpus"
+      num_samples: 100
+      genres: ["fiction", "novel"]
+  
+  # Expert routing analysis
+  routing_analysis:
+    collect_all_layers: true
+    layer_range: [0, 32]
+    top_k_experts: 10  # Top-10 experts per domain
+  
+  # GRU trajectory consistency
+  trajectory_analysis:
+    num_sequences: 500
+    sequence_length: 512
+    compute_l1_distance: true
+    compare_with_baseline: true
+  
+  # Orthogonality analysis
+  orthogonality_analysis:
+    extract_projector_weights: true
+    compute_pairwise_cosine: true
+    histogram_bins: 50
+
+# ===== D+5: Efficiency & Ablation Configuration =====
+day5_efficiency:
+  # vLLM throughput measurement
+  throughput:
+    input_lengths: [128, 512, 1024, 2048]
+    batch_sizes: [1, 4, 8, 16]
+    num_runs: 100
+    warmup_runs: 10
+    measure_ttft: true  # Time to first token
+    measure_tpot: true  # Time per output token
+  
+  # Ablation study
+  ablation:
+    # Note: These checkpoints must be pre-trained
+    configs:
+      - name: "Full"
+        checkpoint: null  # Use main checkpoint
+      - name: "No_GRU"
+        checkpoint: "/path/to/spectra_no_gru/checkpoint"  # USER MUST UPDATE
+      - name: "No_OSR"
+        checkpoint: "/path/to/spectra_no_osr/checkpoint"  # USER MUST UPDATE
+      - name: "No_ExplicitBias"
+        checkpoint: "/path/to/spectra_no_bias/checkpoint"  # USER MUST UPDATE
+    
+    # Evaluation metrics
+    metrics:
+      - "perplexity"
+      - "mmlu"
+      - "gsm8k"
+    
+    # Use smaller dataset for ablation
+    ablation_dataset_size: 500
+
+# ===== D+6: Final Table Configuration =====
+day6_comparison:
+  # Metrics to include in comparison table
+  metrics:
+    - name: "Active Params"
+      key: "active_params"
+      format: "{:.1f}B"
+    - name: "Total Params"
+      key: "total_params"
+      format: "{:.1f}B"
+    - name: "MMLU"
+      key: "mmlu"
+      format: "{:.2f}"
+      bold_best: true
+    - name: "GSM8K"
+      key: "gsm8k"
+      format: "{:.2f}"
+      bold_best: true
+    - name: "ARC"
+      key: "arc_challenge"
+      format: "{:.2f}"
+      bold_best: true
+    - name: "PPL (Wiki)"
+      key: "ppl_wikitext"
+      format: "{:.2f}"
+      bold_best: true
+      lower_is_better: true
+    - name: "Throughput"
+      key: "throughput_tokens_per_sec"
+      format: "{:.1f}"
+      bold_best: true
+  
+  # LaTeX table settings
+  latex:
+    caption: "Comparison of SPECTRA with baseline models on standard benchmarks."
+    label: "tab:comparison"
+    column_alignment: "lcccccc"
+    position: "htbp"
+
+# ===== Global Settings =====
+global:
+  random_seed: 42
+  verbose: true
+  continue_on_error: false  # Stop on first error
+  save_error_logs: true
+  
+  # Reproducibility
+  deterministic: true
+  cudnn_benchmark: false
+  
+  # Logging
+  log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  log_to_console: true
+  log_to_file: true
+

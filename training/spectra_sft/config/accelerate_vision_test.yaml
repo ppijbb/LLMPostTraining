@@ -1,0 +1,11 @@
+# Vision backward 테스트 전용: multi-GPU만 사용, DeepSpeed는 스크립트 내에서 초기화
+compute_environment: LOCAL_MACHINE
+debug: true
+distributed_type: MULTI_GPU
+downcast_bf16: "no"
+enable_cpu_affinity: false
+num_processes: 2
+num_machines: 1
+machine_rank: 0
+gpu_ids: all
+main_process_port: 29500

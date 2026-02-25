@@ -1,31 +1,51 @@
-# LLM Training Project
+# LLMPostTraining
 
 ## Description
-This project provides a comprehensive framework for training and fine-tuning Large Language Models (LLMs) using various methods including Supervised Fine-Tuning (SFT), Reinforcement Learning from Human Feedback (RLHF), and quantization techniques.
+LLMPostTraining is a framework for post-training and fine-tuning Large Language Models (LLMs): Supervised Fine-Tuning (SFT), Reinforcement Learning from Human Feedback (RLHF), distillation, quantization, and MoE/SPECTRA training. It uses DeepSpeed ZeRO, multi-GPU parallelism, and shared config/training utilities.
 
 ## Project Structure
 ```
 llm_training/
-├── data/                    # Training and evaluation datasets
-├── gkd/                     # Generalized Knowledge Distillation related code
-├── lightning_trainer/       # PyTorch Lightning-based training framework
-├── models/                  # Model definitions and configurations
-├── quantization/            # Model quantization utilities
-├── rlhf/                    # Reinforcement Learning from Human Feedback training
-├── sft/                     # Supervised Fine-Tuning with llama_recipes
-├── summary_format/          # Summary formatting utilities
-├── training_utils/          # Common training utilities
+├── config/                  # All configs in one place
+│   ├── spectra/             # SPECTRA SFT configs
+│   ├── sft/                 # SFT / G3MoE configs
+│   ├── rlhf/                # GRPO, TTC, DPO/SimPO configs
+│   └── eval/                # Evaluation / routing benchmark configs
+├── core/                    # Shared utilities
+│   ├── training_utils/      # Dataset, model, config, logging helpers
+│   └── optimizers/          # Custom optimizers, DeepSpeed registry
+├── data/                    # Dataset loaders and schemas
+│   └── summary_format/      # Summary formatting utilities
+├── models/                  # Model code
+│   ├── spectra/             # SPECTRA MoE
+│   ├── moe/                 # G3MoE, GRINMoE, standard MoE upcycle
+│   ├── mora/                # MoRA (ex-peft-mora)
+│   └── qwen3_fused/         # Qwen3 MoE fused kernels / LoRA / quant
+├── training/                # Training entrypoints
+│   ├── spectra_sft/         # SPECTRA SFT (train_spectra, run_spectra)
+│   ├── sft/                 # G3MoE SFT, llama_recipes
+│   ├── rlhf/                # GRPO, TTC, DPO/SimPO
+│   ├── mora/                # MoRA training (train.py, configs)
+│   ├── gkd/                 # Generalized Knowledge Distillation
+│   ├── distillation/       # Distillation modules
+│   ├── lightning_trainer/   # PyTorch Lightning training
+│   ├── experiments/         # Paper experiments / report generation
+│   └── quantization/        # Quantization utilities (e.g. GGUF)
+├── eval/                    # Evaluation, benchmarks, callbacks
+├── scripts/                 # One-off scripts (read_file, test_loop, component tests)
+├── tests/                   # Unit and integration tests
+├── docs/paperworks/         # Paper writing (LaTeX, notes)
 ├── main.py                  # Main inference script
-├── pyproject.toml           # Poetry configuration
-└── requirements.txt         # Python dependencies
+├── pyproject.toml           # Project config
+└── requirements.txt        # Python dependencies
 ```
 
 ## Installation
 
 ### Prerequisites
-- Python 3.12 or higher
-- CUDA-compatible GPU (recommended)
-- Poetry (for dependency management)
+- Python 3.12+
+- CUDA-capable GPU (recommended)
+- uv or pip for dependencies
 
 ### Setup
 1. Clone the repository:
@@ -34,7 +54,7 @@ git clone <repository-url>
 cd llm_training
 ```
 
-2. Install uv:
+2. Install uv (optional):
 ```bash
 pip install uv
 ```
@@ -43,63 +63,59 @@ pip install uv
 ```bash
 uv pip install -r requirements.txt --no-build-isolation --index-strategy unsafe-best-match
 ```
+or with pip:
+```bash
+pip install -r requirements.txt
+```
 
-- if run on GCP VM, use local ssd
+4. Run from repo root with `PYTHONPATH` set:
+```bash
+export PYTHONPATH=/path/to/llm_training   # or . when already in repo root
+```
 
-    ```sh
-    sudo lsblk -o NAME,SIZE,TYPE,MOUNTPOINT | grep nvme0n1
-    sudo mkfs.ext4 -F /dev/nvme0n1
-    sudo mkdir -p /mnt/disks/local-ssd
-    sudo mount /dev/nvme0n1 /mnt/disks/local-ssd
-    sudo chmod a+w /mnt/disks/local-ssd
-    UUID=$(sudo blkid -s UUID -o value /dev/nvme0n1)
-    echo "UUID=$UUID /mnt/disks/local-ssd ext4 discard,defaults,nofail 0 2" | sudo tee -a /etc/fstab
-    ```
+**GCP VM with local SSD (optional):**
+```sh
+sudo lsblk -o NAME,SIZE,TYPE,MOUNTPOINT | grep nvme0n1
+sudo mkfs.ext4 -F /dev/nvme0n1
+sudo mkdir -p /mnt/disks/local-ssd
+sudo mount /dev/nvme0n1 /mnt/disks/local-ssd
+sudo chmod a+w /mnt/disks/local-ssd
+UUID=$(sudo blkid -s UUID -o value /dev/nvme0n1)
+echo "UUID=$UUID /mnt/disks/local-ssd ext4 discard,defaults,nofail 0 2" | sudo tee -a /etc/fstab
+```
 
 ## Usage
 
 ### Model Inference
-Run the main inference script to test a fine-tuned model:
 ```bash
 python main.py
 ```
 
-### Supervised Fine-Tuning (SFT)
-1. Navigate to the SFT directory:
+### SPECTRA SFT
+From repo root:
 ```bash
-cd sft
+PYTHONPATH=. bash training/spectra_sft/run_spectra.sh [config] [num_gpus]
 ```
+Configs live under `config/spectra/` (e.g. `config/spectra/spectra_qwen_config.json`).
 
-2. Configure your training parameters in the config files and run:
+### Supervised Fine-Tuning (SFT / G3MoE)
 ```bash
-python llama_finetuning.py
+cd training/sft
+# Configs: config/sft/*.json
+python custom_module_sft.py   # or use run_g3moe_config.sh with config/sft/...
 ```
 
 ### Lightning Trainer
-1. Navigate to the lightning trainer directory:
 ```bash
-cd lightning_trainer
-```
-
-2. Set up environment variables:
-```bash
+cd training/lightning_trainer
 export CUDA_VISIBLE_DEVICES=0
 export CUDA_LAUNCH_BLOCKING=1
 export WANDB_API_KEY=<your_wandb_api_key>
 export HF_SECRET_KEY=<your_huggingface_token>
 export HF_DATASETS_CACHE=<your_cache_directory>
-```
 
-3. Login to required services:
-```bash
 huggingface-cli login --token $HF_SECRET_KEY
 wandb login --relogin $WANDB_API_KEY
-```
-
-4. Start training with tmux (recommended):
-```bash
-tmux new -s lightning -d
-tmux attach -t lightning
 
 python trainer.py fit \
     --trainer.fast_dev_run false \
@@ -110,112 +126,58 @@ python trainer.py fit \
 ```
 
 ### RLHF Training
-1. Navigate to the RLHF directory:
 ```bash
-cd rlhf
-```
-
-2. Set up environment variables:
-```bash
+cd training/rlhf
 export CUDA_VISIBLE_DEVICES="0,1"
-export CUDA_LAUNCH_BLOCKING=1
-export PYTORCH_CUDA_ALLOC_CONF='expandable_segments:False'
-export TORCH_USE_CUDA_DSA=1
 export WANDB_API_KEY=<your_wandb_api_key>
 export HF_SECRET_KEY=<your_huggingface_token>
 export HF_DATASETS_CACHE=<your_cache_directory>
-```
 
-3. Login to required services:
-```bash
 huggingface-cli login --token $HF_SECRET_KEY
 wandb login --relogin $WANDB_API_KEY
+
+accelerate launch --config_file "accelerate_config.yaml" train.py
 ```
 
-4. Start training with accelerate:
+### MoRA
+Install the MoRA (peft-mora) package from the repo, then run training:
 ```bash
-tmux new -s rlhf -d
-tmux attach -t rlhf
-
-accelerate launch \
-    --config_file "accelerate_config.yaml" \
-    train.py
+pip install -e ./models/mora
+cd training/mora
+# Use train.py with your config (see training/mora/README.md)
 ```
 
 ## Features
-- **Multiple Training Methods**: SFT, RLHF, and Lightning-based training
-- **Model Quantization**: Support for efficient model compression
-- **Distributed Training**: Multi-GPU support with accelerate
-- **Monitoring**: Integration with Weights & Biases for experiment tracking
-- **Flexible Configuration**: Easy-to-modify configuration files
+- **Training methods**: SFT (SPECTRA, G3MoE), RLHF (GRPO, TTC, DPO/SimPO), MoRA, distillation, Lightning
+- **Models**: SPECTRA MoE, G3MoE, MoRA, Qwen3 MoE fused; shared code under `core/` and `models/`
+- **Config**: Single `config/` tree for spectra, sft, rlhf, eval
+- **Distributed**: DeepSpeed ZeRO-2/3, multi-GPU, NVMe offload
+- **Monitoring**: W&B, eval callbacks, routing benchmarks
 
-## Dependencies
-Key dependencies include:
-- PyTorch 2.4.0+ (with CUDA support)
-- Transformers (latest from GitHub)
-- LangChain 0.2.5+
-- Lightning AI framework
-- Hugging Face ecosystem (datasets, tokenizers, etc.)
+## Memory & ZeRO
 
-## Contributing
-Contributions are welcome! Please follow these steps:
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+### ZeRO (ZeRO-2/3 + optional ZenFlow)
+- **ZeRO-2 + ZenFlow**: Recommended for performance
+- **ZeRO-3**: Max memory efficiency; parameter/gradient/optimizer partitioning, NVMe offload
+- **ZenFlow**: Async gradient updates, selective updates, communication overlap (configurable in DeepSpeed config)
 
-## Memory Management & ZeRO Optimization
-
-### ZeRO Memory Optimization (ZeRO-2/3 + ZenFlow)
-This project uses DeepSpeed ZeRO with ZenFlow for advanced memory optimization, providing the best of both worlds for large MoE models like SPECTRA.
-
-#### Supported Configurations
-- **ZeRO-2 + ZenFlow**: Official combination for maximum performance
-- **ZeRO-3 + ZenFlow**: Experimental combination (may not be officially supported)
-- **ZeRO-3 Only**: Standard ZeRO-3 partitioning without ZenFlow
-
-#### ZenFlow Features (when enabled)
-- **Asynchronous Gradient Updates**: Reduces CPU-GPU stalls during offloading
-- **Selective Gradient Updates**: Prioritizes important gradients for GPU updates
-- **Communication Overlap**: Overlaps computation with communication
-- **Up to 5x speedup** over standard ZeRO-Offload
-
-#### ZenFlow Configuration
-```json
-"zenflow": {
-  "topk_ratio": 0.05,        // Top 5% important gradients updated on GPU
-  "select_strategy": "auto",  // Adaptive selection strategy
-  "select_interval": "auto",  // Adaptive reselection frequency
-  "update_interval": 4,       // Update unimportant gradients every 4 steps
-  "overlap_step": true        // Enable computation-communication overlap
-}
-```
-
-#### ZeRO-3 Features (when stage=3)
-- **Parameter Partitioning**: 16-bit model parameters partitioned across processes
-- **Gradient Partitioning**: Gradients partitioned for memory efficiency
-- **Optimizer State Partitioning**: Optimizer states partitioned to reduce redundancy
-- **NVMe Offloading**: Parameters and optimizer states offloaded to NVMe storage
-
-#### Memory Monitoring
-- Automatic GPU and system RAM monitoring during training
-- Warnings when memory usage exceeds safe thresholds (90% GPU memory, 85% system RAM)
-- ZenFlow/ZeRO-3 specific memory usage tracking and optimization suggestions
-
-#### Environment Variables
+### Environment
 ```bash
-# Force disable ZenFlow if RAM OOM occurs
+# Disable ZenFlow if RAM OOM
 export DISABLE_ZENFLOW=1
 ```
 
-#### Memory Optimization Tips
-1. **Choose the right ZeRO stage**: ZeRO-2 + ZenFlow for best performance, ZeRO-3 for maximum memory efficiency
-2. **Monitor memory usage** in training logs for optimization warnings
-3. **Reduce batch size** if memory issues persist (`per_device_train_batch_size`)
-4. **Enable gradient checkpointing** for additional memory savings (`gradient_checkpointing: true`)
-5. **Use NVMe offload** for maximum memory savings (already configured)
-6. **Disable ZenFlow** (`DISABLE_ZENFLOW=1`) if experiencing RAM OOM issues
+### Tips
+- Use ZeRO-2 + ZenFlow for best throughput; ZeRO-3 for largest models
+- Reduce `per_device_train_batch_size` or enable `gradient_checkpointing` if OOM
+- Configs under `config/spectra/`, `config/sft/` reference DeepSpeed JSONs in the same tree
+
+## Dependencies
+- PyTorch 2.4+ (CUDA)
+- Transformers (with trust_remote_code for Qwen/SPECTRA)
+- DeepSpeed, Accelerate
+- Lightning AI (for `training/lightning_trainer`)
+- Hugging Face (datasets, tokenizers, etc.)
 
 ## License
-This project is licensed under the MIT License.
+MIT License.

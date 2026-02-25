@@ -1,0 +1,229 @@
+# Baseline Models Configuration for SPECTRA Comparison
+# Detailed specifications for each baseline model
+
+models:
+  # ===== Mixtral 8x7B =====
+  mixtral_8x7b:
+    name: "Mixtral-8x7B"
+    hf_path: "mistralai/Mixtral-8x7B-v0.1"
+    
+    # Model specifications
+    params:
+      total: 46.7e9  # 46.7B total parameters
+      active: 12.9e9  # 12.9B active parameters per token
+    
+    architecture:
+      num_layers: 32
+      hidden_size: 4096
+      num_experts: 8
+      top_k: 2
+      router_type: "top_k"
+    
+    # Loading configuration
+    loading:
+      cache_dir: "./baselines/mixtral"
+      load_in_8bit: false
+      load_in_4bit: false
+      torch_dtype: "bfloat16"
+      device_map: "auto"
+    
+    # Expected performance (reference values)
+    expected_performance:
+      mmlu: 70.6
+      gsm8k: 58.4
+      hellaswag: 86.7
+      arc_challenge: 70.0
+      humaneval: 40.2
+    
+    # Training information
+    training:
+      tokens_trained: "unknown"
+      framework: "Megatron-LM"
+      date: "2023-12"
+  
+  # ===== LLaMA 3 8B =====
+  llama3_8b:
+    name: "LLaMA-3-8B"
+    hf_path: "meta-llama/Meta-Llama-3-8B"
+    
+    # Model specifications
+    params:
+      total: 8.0e9  # 8B parameters (dense)
+      active: 8.0e9  # All parameters active (dense model)
+    
+    architecture:
+      num_layers: 32
+      hidden_size: 4096
+      num_experts: 1  # Dense model
+      top_k: 1
+      router_type: "none"
+    
+    # Loading configuration
+    loading:
+      cache_dir: "./baselines/llama3"
+      load_in_8bit: false
+      load_in_4bit: false
+      torch_dtype: "bfloat16"
+      device_map: "auto"
+      # Note: May require access token
+      use_auth_token: true
+    
+    # Expected performance (reference values)
+    expected_performance:
+      mmlu: 66.6
+      gsm8k: 79.6
+      hellaswag: 82.1
+      arc_challenge: 78.6
+      humaneval: 62.2
+    
+    # Training information
+    training:
+      tokens_trained: "15T"
+      framework: "PyTorch"
+      date: "2024-04"
+  
+  # ===== DeepSeek-V3 (Optional) =====
+  deepseek_v3:
+    name: "DeepSeek-V3"
+    hf_path: "deepseek-ai/DeepSeek-V3"
+    
+    # Model specifications
+    params:
+      total: 671e9  # 671B total parameters
+      active: 37e9  # 37B active parameters per token
+    
+    architecture:
+      num_layers: 61
+      hidden_size: 7168
+      num_experts: 256
+      top_k: 8
+      router_type: "moe"
+    
+    # Loading configuration
+    loading:
+      cache_dir: "./baselines/deepseek_v3"
+      load_in_8bit: true  # Recommended for large model
+      load_in_4bit: false
+      torch_dtype: "bfloat16"
+      device_map: "auto"
+    
+    # Expected performance
+    expected_performance:
+      mmlu: 88.5
+      gsm8k: 90.2
+      hellaswag: 92.3
+      arc_challenge: 92.0
+      humaneval: 75.0
+    
+    # Training information
+    training:
+      tokens_trained: "14.8T"
+      framework: "HAI-LLM"
+      date: "2024-12"
+    
+    # Note: Very large model, may require significant GPU memory
+    notes: "Requires 8xA100 80GB or quantization"
+  
+  # ===== Qwen2.5-MoE-A14B (Optional) =====
+  qwen25_moe:
+    name: "Qwen2.5-MoE-A14B"
+    hf_path: "Qwen/Qwen2.5-MoE-A14B"
+    
+    # Model specifications
+    params:
+      total: 14.3e9  # 14.3B total parameters
+      active: 2.7e9  # 2.7B active parameters per token
+    
+    architecture:
+      num_layers: 24
+      hidden_size: 1536
+      num_experts: 60
+      top_k: 8
+      router_type: "moe"
+    
+    # Loading configuration
+    loading:
+      cache_dir: "./baselines/qwen25_moe"
+      load_in_8bit: false
+      load_in_4bit: false
+      torch_dtype: "bfloat16"
+      device_map: "auto"
+    
+    # Expected performance
+    expected_performance:
+      mmlu: 70.2
+      gsm8k: 83.5
+      hellaswag: 85.4
+      arc_challenge: 75.8
+      humaneval: 65.0
+    
+    # Training information
+    training:
+      tokens_trained: "18T"
+      framework: "Qwen Framework"
+      date: "2024-09"
+
+# ===== Comparison Groups =====
+# Define which models to compare for different purposes
+
+comparison_groups:
+  # Main comparison: Similar active parameters
+  similar_active_params:
+    - "mixtral_8x7b"  # 12.9B active
+    - "llama3_8b"     # 8B active
+  
+  # Full comparison: All baselines
+  all:
+    - "mixtral_8x7b"
+    - "llama3_8b"
+    - "deepseek_v3"
+    - "qwen25_moe"
+  
+  # MoE-only comparison
+  moe_only:
+    - "mixtral_8x7b"
+    - "deepseek_v3"
+    - "qwen25_moe"
+  
+  # Dense-only comparison
+  dense_only:
+    - "llama3_8b"
+
+# ===== Download Configuration =====
+download:
+  # Auto-download missing models
+  auto_download: true
+  
+  # Parallel downloads
+  max_workers: 4
+  
+  # Retry configuration
+  max_retries: 3
+  retry_delay: 5  # seconds
+  
+  # Cache management
+  cache_dir: "./baselines"
+  symlink_cache: false
+  
+  # HuggingFace settings
+  hf_token_file: "~/.huggingface/token"  # For gated models
+  offline_mode: false
+
+# ===== Evaluation Configuration =====
+evaluation:
+  # Which models to evaluate
+  default_group: "similar_active_params"
+  
+  # Skip models that fail to load
+  skip_on_load_error: true
+  
+  # Parallel evaluation
+  parallel_evaluation: false  # Set to true for independent evaluations
+  
+  # Save individual results
+  save_per_model: true
+  
+  # Comparison settings
+  normalize_scores: false  # Keep raw scores
+  relative_to_baseline: null  # e.g., "llama3_8b" for relative improvement
+

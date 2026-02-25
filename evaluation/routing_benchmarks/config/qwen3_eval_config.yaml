@@ -1,0 +1,58 @@
+# Qwen3-VL-30B-A3 Evaluation Configuration
+# Optimized for ICML/NeurIPS Submission - TURBO MODE
+
+# ===== Model Configuration =====
+model:
+  checkpoint_path: "Qwen/Qwen3-VL-30B-A3B-Instruct"
+  model_name: "Qwen3-VL-30B-A3"
+  num_experts: 64
+  active_experts: 8
+  trust_remote_code: true
+
+# ===== Compute Configuration =====
+compute:
+  num_gpus: 4
+  batch_size_per_gpu: 4 # Increased for throughput
+  max_seq_length: 1024  # Reduced for speed, sufficient for routing analysis
+  use_bf16: true
+  
+  # DeepSpeed Turbo Settings
+  zero_optimization:
+    stage: 3
+    overlap_comm: true
+    contiguous_gradients: true
+    sub_group_size: 1e8
+    stage3_prefetch_bucket_size: 5e7
+    stage3_param_persistence_threshold: 1e6
+    offload_param:
+      device: "nvme"
+      nvme_path: "/mls/conan/offload"
+      buffer_size: 1e9
+  aio:
+    block_size: 1048576
+    thread_count: 16
+
+# ===== Datasets Configuration =====
+datasets:
+  text:
+    - name: "HuggingFaceTB/smoltalk"
+      config: "all"
+      split: "train[:1000]"
+      max_batches: 50 # Limit for speed
+  vision_language:
+    - name: "lmms-lab/MMMU"
+      config: "Art"
+      split: "validation"
+      max_batches: 20
+    - name: "HuggingFaceM4/VQAv2"
+      split: "validation[:1000]"
+      max_batches: 20
+
+# ===== Routing Analysis Configuration =====
+routing:
+  target_blocks:
+    - "Qwen3VLMoeTextSparseMoeBlock"
+    - "Qwen3VLVisionMoeSparseMoeBlock"
+  metrics:
+    - "cv"
+    - "maxvio"

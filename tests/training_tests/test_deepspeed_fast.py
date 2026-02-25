@@ -125,7 +125,7 @@ from models.spectra_model import SPECTRAForConditionalGeneration, SPECTRAConfig
 from transformers import AutoConfig, AutoTokenizer
 
 # Import setup_model from train_spectra
-from spectra_sft.train_spectra import setup_model
+from training.spectra_sft.train_spectra import setup_model
 
 
 def setup_distributed():
@@ -474,7 +474,7 @@ def setup_model_fast(config_dict, ds_config_dict, device="cuda"):
     
     # Set training_config as a module-level variable for train_spectra.py's setup_model
     # This is needed because setup_model references training_config internally (line 742, 767)
-    import spectra_sft.train_spectra as train_spectra_module
+    import training.spectra_sft.train_spectra as train_spectra_module
     
     # Create a mock training_config if not provided, with defaults matching train_spectra.py usage
     if not training_config:

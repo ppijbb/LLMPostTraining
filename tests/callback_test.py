@@ -23,20 +23,20 @@ from peft.tuners.lora.config import LoraConfig
 from peft.mapping import get_peft_model
 from peft.utils.peft_types import TaskType
 
-# Add parent directory to path to import custom modules
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from pathlib import Path
+_REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# Import custom modules
+# Import custom modules (run with PYTHONPATH=repo_root)
 from transformers import Gemma3ForCausalLM
 from models import G3MoEForCausalLM, G3MoEConfig
 from data.base_model_sft_dataset import get_dataset, create_multimodal_collate_fn
 from data.simple_sft_dataset import get_simple_sft_dataset, create_simple_collate_fn, smoltalk_dataset, orca_mini_dataset
 
-from training_utils.utils import format_parameters, load_config, setup_deepspeed_environment
-from optimizers.custom_optimizers import get_custom_optimizer
-from optimizers.deepspeed_optimizer_registry import register_custom_optimizers
+from core.training_utils.utils import format_parameters, load_config, setup_deepspeed_environment
+from core.optimizers.custom_optimizers import get_custom_optimizer
+from core.optimizers.deepspeed_optimizer_registry import register_custom_optimizers
 from eval.callbacks import get_model_eval_callback
-from sft.moe_monitoring_callback import create_moe_callback_for_transformers
+from eval.moe_monitoring_callback import create_moe_callback_for_transformers
 
 
 def load_config(config_path: str):
@@ -90,7 +90,7 @@ def setup_model_and_tokenizer(model_config: Dict[str, Any]):
     
     # Set chat template with error handling
     try:
-        with open("/home/conan/workspace/llm_training/sft/config/chat_template.txt", "r") as f:
+        with open(_REPO_ROOT / "config" / "sft" / "chat_template.txt", "r") as f:
             chat_template = f.read()
         
         # AutoProcessor인 경우 tokenizer 속성에 설정

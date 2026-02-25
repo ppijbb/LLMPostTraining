@@ -1,0 +1,68 @@
+# [MoRA: High-Rank Updating for Parameter-Efﬁcient Fine-Tuning](https://arxiv.org/abs/2405.12130)
+
+## Setup
+
+We implement MoRA in `models/mora` (ex-peft-mora) based on HF peft. Install from repo root:
+``` sh
+pip install -e ./models/mora
+```
+
+After installation, it can be used like
+
+``` python
+from peft import LoraConfig, get_peft_model
+config = LoraConfig(
+    # enable MoRA
+    use_mora=True,
+    # type 1 (Sharing) for large lora ranks, Eq. 6 in paper
+    # type 6 (RoPE based) for small lora ranks, Eq. 9 in paper
+    mora_type=6,
+    # lora rank here, we will calculate corresponding $\hat{r}$ in MoRA
+    r=lora_r,
+    # MoRA does not use lora_alpha
+    # lora_alpha=lora_alpha,
+    target_modules=lora_target_modules,
+    lora_dropout=lora_dropout,
+    task_type="CAUSAL_LM",
+    **kwargs,
+)
+model = get_peft_model(model, config)
+
+# training here...
+
+# can be merged into model via `merge_and_unload` like LoRA
+model = model.merge_and_unload() 
+```
+
+## Examples
+### fine-tuning MetaMath with MoRA
+
+``` sh
+RANK=8
+deepspeed --num_gpus=8 --num_nodes=2 train.py \
+           --base_model <LLAMA-2> --micro_batch_size 4\
+            --wandb_run_name mora_math_r8 --lora_target_modules q_proj,k_proj,v_proj,o_proj,gate_proj,down_proj,up_proj \
+            --num_epochs 3 --deepspeed ds.config --wandb_project lora-math --lora_r $RANK --batch_size 128 \
+            --data_path meta-math/MetaMath \
+            --save_steps 3000 \
+            --learning_rate 3e-4 --mora_type 6 \
+            --logging_steps 5  --use_bf16  --use_16bit --use_mora 
+```
+
+### pretraining
+
+``` sh
+deepspeed --num_gpus=8 --num_nodes=4 train.py \
+        --micro_batch_size 16 --wandb_run_name mora-pretrain250m-r128 \
+        --num_epochs 1 --wandb_project lora-pretrain --batch_size 1024 \
+        --data_path <processed C4> --logging_steps 1 \
+        --lora_target_modules q_proj,k_proj,v_proj,o_proj,gate_proj,down_proj,up_proj \
+        --lora_r 128 --lora_alpha 64 --warmup_steps 1000  \
+        --force_tqdm_update --lr_scheduler_type cosine \
+        --max_steps 10000 --pretrain 250m \
+        --train_embhead --learning_rate 5e-4 \
+        --use_mora --use_relora --use_relora_step 2000  # ReMoRA merge per 2000 steps 
+```
+
+## Acknowledgement
+Our Code is based on peft, alpaca-lora and ReLoRA

@@ -1,15 +1,14 @@
 """
-G3MoE Models module
+G3MoE / SPECTRA Models module
 
-This module contains the G3MoE (Generative 3rd MoE) models implementation.
+Uses top-level modules for backward compatibility. Subpackages: models.spectra, models.moe.
 """
-
 import os
 import torch
 
-# Disable torch.compile for G3MoE models to avoid data-dependent branching issues
-os.environ["TORCH_COMPILE_DISABLE"] = "1"
-torch._dynamo.config.suppress_errors = True
+os.environ.setdefault("TORCH_COMPILE_DISABLE", "1")
+if hasattr(torch, "_dynamo") and hasattr(torch._dynamo, "config"):
+    torch._dynamo.config.suppress_errors = True
 
 from .moe_config import *
 from .moe_model import *
@@ -28,25 +27,25 @@ from .spectra_model import (
     SPECTRAForCausalLM,
     SPECTRAForConditionalGeneration,
     SPECTRAModel,
-    SPECTRAExoskeletonMoEInjector
+    SPECTRAExoskeletonMoEInjector,
 )
 from .g2moe_config import *
 from .g2moe_model import *
 
 __all__ = [
     "G3MoEConfig",
-    "G3MoETextConfig", 
+    "G3MoETextConfig",
     "G3MoEPreTrainedModel",
     "G3MoETextModel",
     "G3MoEForCausalLM",
     "G3MoEForConditionalGeneration",
     "G3MoEModel",
-    "SpectraConfig",
-    "SpectraTextConfig",
-    "SpectraPreTrainedModel",
-    "SpectraTextModel",
-    "SpectraForCausalLM",
-    "SpectraForConditionalGeneration",
-    "SpectraModel",
-    "SPECTRAExoskeletonMoEInjector"
+    "SPECTRAConfig",
+    "SPECTRATextConfig",
+    "SPECTRAPreTrainedModel",
+    "SPECTRATextModel",
+    "SPECTRAForCausalLM",
+    "SPECTRAForConditionalGeneration",
+    "SPECTRAModel",
+    "SPECTRAExoskeletonMoEInjector",
 ]

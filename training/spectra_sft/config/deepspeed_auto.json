@@ -1,0 +1,116 @@
+{
+    "fp16": {
+        "enabled": false,
+        "loss_scale": 0,
+        "loss_scale_window": 1000,
+        "initial_scale_power": 16,
+        "hysteresis": 2,
+        "min_loss_scale": 1
+    },
+    "bf16": {
+        "enabled": true
+    },
+    "zero_allow_untested_optimizer": true,
+    "optimizer": {
+        "type": "AdamW8bit",
+        "params": {
+            "lr": "auto",
+            "betas": [
+                0.9,
+                0.999
+            ],
+            "eps": 1e-08,
+            "weight_decay": "auto"
+        }
+    },
+    "aio": {
+        "block_size": 2097152,
+        "queue_depth": 32,
+        "thread_count": 4,
+        "single_submit": false,
+        "overlap_events": true
+    },
+    "zero_optimization": {
+        "stage": 3,
+        "offload_optimizer": {
+            "device": "nvme",
+            "nvme_path": "/mls/conan/offload",
+            "pin_memory": false,
+            "fast_init": true,
+            "ratio": 1.0,
+            "buffer_count": 8,
+            "pipeline_read": false,
+            "pipeline_write": false
+        },
+        "offload_param": {
+            "device": "none",
+            "nvme_path": "/mls/conan/offload",
+            "buffer_count": 5,
+            "buffer_size": 200000000,
+            "max_in_cpu": 100000.0,
+            "pin_memory": false
+        },
+        "memory_efficient_linear": false,
+        "allgather_partitions": true,
+        "overlap_comm": true,
+        "contiguous_gradients": true,
+        "sub_group_size": 200000000.0,
+        "allgather_bucket_size": 200000000.0,
+        "reduce_bucket_size": 200000000.0,
+        "stage3_prefetch_bucket_size": 100000000.0,
+        "stage3_param_persistence_threshold": 1000000.0,
+        "stage3_max_live_parameters": 100000000.0,
+        "stage3_max_reuse_distance": 100000000.0,
+        "stage3_gather_16bit_weights_on_model_save": true,
+        "ignore_unused_parameters": true,
+        "leaf_module": {
+            "classes": [
+                "Qwen2DecoderLayer",
+                "Qwen2VLDecoderLayer",
+                "Qwen3VLMoeTextDecoderLayer",
+                "Qwen3VLMoeVisionModel",
+                "Qwen3VLMoeVisionBlock",
+                "Qwen3VLMoeVisionMLP",
+                "Qwen3VLMoeVisionAttention",
+                "SiglipVisionModel",
+                "SiglipVisionTransformer",
+                "SiglipEncoder",
+                "SPECTRAMultiModalProjector",
+                "SPECTRARMSNorm",
+                "Qwen3VLMoeTextSparseMoeBlock",
+                "Qwen3VLMoeTextExperts",
+                "Qwen3VLMoeVisionPatchMerger",
+                "Qwen3VLMoeVisionPatchEmbed"
+            ],
+            "names": [],
+            "name_suffixes": []
+        }
+    },
+    "prescale_gradients": false,
+    "sparse_gradients": true,
+    "scheduler": {
+        "type": "WarmupDecayLR",
+        "params": {
+            "last_batch_iteration": -1,
+            "total_num_steps": "auto",
+            "warmup_min_lr": "auto",
+            "warmup_max_lr": "auto",
+            "warmup_num_steps": "auto"
+        }
+    },
+    "activation_checkpointing": {
+        "partition_activations": true,
+        "cpu_checkpointing": false,
+        "contiguous_memory_optimization": true,
+        "number_checkpoints": 1,
+        "synchronize_checkpoint_boundary": true
+    },
+    "sequence_parallel_size": 1,
+    "seq_parallel_communication_data_type": "bf16",
+    "gradient_clipping": "auto",
+    "gradient_accumulation_steps": "auto",
+    "train_batch_size": "auto",
+    "train_micro_batch_size_per_gpu": 1,
+    "steps_per_print": 10,
+    "wall_clock_breakdown": false
+}

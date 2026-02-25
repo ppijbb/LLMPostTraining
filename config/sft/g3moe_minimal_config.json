@@ -1,0 +1,53 @@
+{
+    "model_name_or_path": "google/gemma-3-4b-it",
+    "tokenizer_name_or_path": null,
+    "use_lora": true,
+    "lora_r": 1,
+    "lora_alpha": 4,
+    "lora_dropout": 0.0,
+    "trust_remote_code": true,
+    
+    "dataset_name": "Gunulhona/open_m_3",
+    "max_seq_length": 512,
+    "test_size": 0.2,
+    "text_only": true,
+    "streaming": true,
+    
+    "output_dir": "./outputs/minimal_training",
+    "overwrite_output_dir": true,
+    "num_train_epochs": 1,
+    "per_device_train_batch_size": 1,
+    "per_device_eval_batch_size": 1,
+    "gradient_accumulation_steps": 4,
+    "gradient_checkpointing": true,
+    "learning_rate": 1e-4,
+    "weight_decay": 0.0,
+    "max_grad_norm": 0.5,
+    "lr_scheduler_type": "linear",
+    "warmup_ratio": 0.1,
+    
+    "logging_steps": 20,
+    "logging_dir": "./logs/minimal_training",
+    "eval_steps": 1000,
+    "eval_strategy": "no",
+    "save_steps": 2000,
+    "save_strategy": "no",
+    "save_total_limit": 1,
+    "load_best_model_at_end": false,
+    
+    "fp16": false,
+    "bf16": false,
+    "tf32": false,
+    "dataloader_drop_last": true,
+    "dataloader_num_workers": 1,
+    "dataloader_pin_memory": false,
+    "remove_unused_columns": true,
+    
+    "report_to": [],
+    "run_name": "minimal-cpu-test",
+    "seed": 42,
+    
+    "deepspeed": "config/sft/deepspeed_cpu_offload.json",
+    "max_steps": 50,
+    "packing": false
+} 
