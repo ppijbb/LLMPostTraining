@@ -1,44 +1,7 @@
 # LLMPostTraining
 
 ## Description
-LLMPostTraining is a framework for post-training and fine-tuning Large Language Models (LLMs): Supervised Fine-Tuning (SFT), Reinforcement Learning from Human Feedback (RLHF), distillation, quantization, and MoE/SPECTRA training. It uses DeepSpeed ZeRO, multi-GPU parallelism, and shared config/training utilities.
-
-## Project Structure
-```
-llm_training/
-├── config/                  # All configs in one place
-│   ├── spectra/             # SPECTRA SFT configs
-│   ├── sft/                 # SFT / G3MoE configs
-│   ├── rlhf/                # GRPO, TTC, DPO/SimPO configs
-│   └── eval/                # Evaluation / routing benchmark configs
-├── core/                    # Shared utilities
-│   ├── training_utils/      # Dataset, model, config, logging helpers
-│   └── optimizers/          # Custom optimizers, DeepSpeed registry
-├── data/                    # Dataset loaders and schemas
-│   └── summary_format/      # Summary formatting utilities
-├── models/                  # Model code
-│   ├── spectra/             # SPECTRA MoE
-│   ├── moe/                 # G3MoE, GRINMoE, standard MoE upcycle
-│   ├── mora/                # MoRA (ex-peft-mora)
-│   └── qwen3_fused/         # Qwen3 MoE fused kernels / LoRA / quant
-├── training/                # Training entrypoints
-│   ├── spectra_sft/         # SPECTRA SFT (train_spectra, run_spectra)
-│   ├── sft/                 # G3MoE SFT, llama_recipes
-│   ├── rlhf/                # GRPO, TTC, DPO/SimPO
-│   ├── mora/                # MoRA training (train.py, configs)
-│   ├── gkd/                 # Generalized Knowledge Distillation
-│   ├── distillation/       # Distillation modules
-│   ├── lightning_trainer/   # PyTorch Lightning training
-│   ├── experiments/         # Paper experiments / report generation
-│   └── quantization/        # Quantization utilities (e.g. GGUF)
-├── eval/                    # Evaluation, benchmarks, callbacks
-├── scripts/                 # One-off scripts (read_file, test_loop, component tests)
-├── tests/                   # Unit and integration tests
-├── docs/paperworks/         # Paper writing (LaTeX, notes)
-├── main.py                  # Main inference script
-├── pyproject.toml           # Project config
-└── requirements.txt        # Python dependencies
-```
+LLMPostTraining is a framework for post-training and fine-tuning Large Language Models (LLMs): Supervised Fine-Tuning (SFT), Reinforcement Learning from Human Feedback (RLHF), distillation, quantization, and MoE/MLM training. It uses DeepSpeed ZeRO, multi-GPU parallelism, and shared config/training utilities.
 
 ## Installation
 
