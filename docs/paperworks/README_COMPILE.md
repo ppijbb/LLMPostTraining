@@ -1,4 +1,4 @@
-# SPECTRA 논문 PDF 컴파일 가이드
+# Seqorth 논문 PDF 컴파일 가이드
 
 ## 빠른 시작
 
@@ -19,8 +19,8 @@ cd /home/conan/workspace/llm_training/docs/paperworks
 1. **Overleaf.com** 접속 (무료 계정 생성)
 2. 새 프로젝트 생성 → "Upload Project"
 3. 다음 파일들을 업로드:
-   - `spectra_icml2026.tex`
-   - `spectra_references.bib`
+   - `seqorth_icml2026.tex`
+   - `seqorth_references.bib`
    - `icml2026/` 폴더 전체 (또는 필요한 .sty, .bst 파일들)
 4. "Recompile" 버튼 클릭
 5. PDF 다운로드
@@ -44,10 +44,10 @@ brew install --cask mactex
 ```bash
 cd /home/conan/workspace/llm_training/docs/paperworks
 export TEXINPUTS=".:$(pwd)/icml2026:"
-pdflatex spectra_icml2026.tex
-bibtex spectra_icml2026
-pdflatex spectra_icml2026.tex
-pdflatex spectra_icml2026.tex
+pdflatex seqorth_icml2026.tex
+bibtex seqorth_icml2026
+pdflatex seqorth_icml2026.tex
+pdflatex seqorth_icml2026.tex
 ```
 
 ### 방법 4: Docker 사용 (sudo 권한 필요)
@@ -60,17 +60,17 @@ sudo docker run --rm \
     texlive/texlive:latest \
     bash -c "
         export TEXINPUTS='.:/workspace/icml2026:'
-        pdflatex -interaction=nonstopmode spectra_icml2026.tex
-        bibtex spectra_icml2026
-        pdflatex -interaction=nonstopmode spectra_icml2026.tex
-        pdflatex -interaction=nonstopmode spectra_icml2026.tex
+        pdflatex -interaction=nonstopmode seqorth_icml2026.tex
+        bibtex seqorth_icml2026
+        pdflatex -interaction=nonstopmode seqorth_icml2026.tex
+        pdflatex -interaction=nonstopmode seqorth_icml2026.tex
     "
 ```
 
 ## 필요한 파일
 
-- `spectra_icml2026.tex` - 메인 논문 파일
-- `spectra_references.bib` - 참고문헌
+- `seqorth_icml2026.tex` - 메인 논문 파일
+- `seqorth_references.bib` - 참고문헌
 - `icml2026.sty` - ICML 스타일 파일 (이미 복사됨)
 - `icml2026.bst` - 참고문헌 스타일 (이미 복사됨)
 - 기타 .sty 파일들 (algorithm.sty, algorithmic.sty 등)
@@ -82,7 +82,7 @@ sudo docker run --rm \
 - 또는 스타일 파일들을 현재 디렉토리로 복사 (이미 완료됨)
 
 ### 오류: "Bibliography not found"
-- 해결: `bibtex spectra_icml2026` 실행 후 다시 `pdflatex` 실행
+- 해결: `bibtex seqorth_icml2026` 실행 후 다시 `pdflatex` 실행
 
 ### 오류: "Undefined references"
 - 해결: `pdflatex`를 2-3번 더 실행 (참조 해결을 위해)
@@ -90,11 +90,11 @@ sudo docker run --rm \
 ## 출력 파일
 
 컴파일 성공 시 생성되는 파일:
-- `spectra_icml2026.pdf` - 최종 PDF (이것을 확인하세요!)
-- `spectra_icml2026.aux` - 보조 파일
-- `spectra_icml2026.bbl` - 참고문헌 파일
-- `spectra_icml2026.blg` - BibTeX 로그
-- `spectra_icml2026.log` - 컴파일 로그
+- `seqorth_icml2026.pdf` - 최종 PDF (이것을 확인하세요!)
+- `seqorth_icml2026.aux` - 보조 파일
+- `seqorth_icml2026.bbl` - 참고문헌 파일
+- `seqorth_icml2026.blg` - BibTeX 로그
+- `seqorth_icml2026.log` - 컴파일 로그
 
 ## 추천 방법
 

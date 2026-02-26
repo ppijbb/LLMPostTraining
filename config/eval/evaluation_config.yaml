@@ -1,13 +1,13 @@
-# SPECTRA 7-Day Evaluation Configuration
+# Seqorth 7-Day Evaluation Configuration
 # For ICML/NeurIPS Submission
 
 # ===== Model Configuration =====
 model:
-  checkpoint_path: "/path/to/spectra/checkpoint"  # USER MUST UPDATE
-  model_name: "SPECTRA-256E"
+  checkpoint_path: "/path/to/seqorth/checkpoint"  # USER MUST UPDATE
+  model_name: "Seqorth-256E"
   num_experts: 256
   active_experts: 8  # top-k
-  router_type: "spectra"  # spectra, switch, mixtral
+  router_type: "seqorth"  # seqorth, switch, mixtral
   
   # Model architecture details
   hidden_size: 4096
@@ -36,7 +36,7 @@ compute:
 wandb:
   enabled: true
   run_id: "bzrw39zy"  # USER MUST UPDATE
-  project: "spectra-training"
+  project: "seqorth-training"
   entity: null  # Leave null for default
   
   # For extracting training curves
@@ -192,11 +192,11 @@ day5_efficiency:
       - name: "Full"
         checkpoint: null  # Use main checkpoint
       - name: "No_GRU"
-        checkpoint: "/path/to/spectra_no_gru/checkpoint"  # USER MUST UPDATE
+        checkpoint: "/path/to/seqorth_no_gru/checkpoint"  # USER MUST UPDATE
       - name: "No_OSR"
-        checkpoint: "/path/to/spectra_no_osr/checkpoint"  # USER MUST UPDATE
+        checkpoint: "/path/to/seqorth_no_osr/checkpoint"  # USER MUST UPDATE
       - name: "No_ExplicitBias"
-        checkpoint: "/path/to/spectra_no_bias/checkpoint"  # USER MUST UPDATE
+        checkpoint: "/path/to/seqorth_no_bias/checkpoint"  # USER MUST UPDATE
     
     # Evaluation metrics
     metrics:
@@ -241,7 +241,7 @@ day6_comparison:
   
   # LaTeX table settings
   latex:
-    caption: "Comparison of SPECTRA with baseline models on standard benchmarks."
+    caption: "Comparison of Seqorth with baseline models on standard benchmarks."
     label: "tab:comparison"
     column_alignment: "lcccccc"
     position: "htbp"

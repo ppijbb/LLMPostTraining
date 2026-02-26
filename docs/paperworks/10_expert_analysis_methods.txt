@@ -53,7 +53,7 @@ Computation:
 3. Generate affinity matrix [num_experts × num_domains]
 4. Visualize as heatmap
 
-**Expected Result for SPECTRA**:
+**Expected Result for Seqorth**:
 ```
 Affinity Matrix (Example):
            Code  Math  Science  History  Literature
@@ -89,7 +89,7 @@ Avg_Purity = mean(Purity(expert_i) for i in range(num_experts))
 
 **Expected Results**:
 - Switch Transformer: Avg_Purity ≈ 0.3-0.4 (low specialization)
-- SPECTRA: Avg_Purity ≈ 0.6-0.8 (high specialization)
+- Seqorth: Avg_Purity ≈ 0.6-0.8 (high specialization)
 
 
 **B.3 Token Clustering Quality (Silhouette Score)**
@@ -116,7 +116,7 @@ Avg_Silhouette = mean(Silhouette(i) for all tokens)
 **Expected Results**:
 - Random Routing: Silhouette ≈ 0
 - Switch Transformer: Silhouette ≈ 0.2-0.3
-- SPECTRA: Silhouette ≈ 0.5-0.7 (better clustering)
+- Seqorth: Silhouette ≈ 0.5-0.7 (better clustering)
 
 
 **B.4 Expert Diversity (Normalized Mutual Information)**
@@ -142,7 +142,7 @@ Where:
 
 **Expected Results**:
 - Switch Transformer: Diversity ≈ 0.3-0.4 (low diversity)
-- SPECTRA: Diversity ≈ 0.7-0.9 (high diversity, due to orthogonality)
+- Seqorth: Diversity ≈ 0.7-0.9 (high diversity, due to orthogonality)
 
 
 **B.5 Routing Confidence (Gini Coefficient)**
@@ -168,7 +168,7 @@ Avg_Confidence = 1 - mean(Gini(token) for all tokens)
 **Expected Results**:
 - Hash Routing: Confidence = 1.0 (deterministic)
 - Switch Transformer: Confidence ≈ 0.6-0.7
-- SPECTRA: Confidence ≈ 0.7-0.8 (more confident due to specialization)
+- Seqorth: Confidence ≈ 0.7-0.8 (more confident due to specialization)
 
 
 **B.6 Expert Representation Similarity (Cosine Distance Matrix)**
@@ -194,7 +194,7 @@ Avg_Distance = mean(Distance_ij for i ≠ j)
 
 **Expected Results**:
 - Switch Transformer: Avg_Distance ≈ 0.3-0.4 (similar representations)
-- SPECTRA: Avg_Distance ≈ 0.7-0.9 (orthogonal representations)
+- Seqorth: Avg_Distance ≈ 0.7-0.9 (orthogonal representations)
 
 This connects to Gram matrix orthogonality:
 ```
@@ -248,7 +248,7 @@ plt.savefig('token_clustering_tsne.pdf')
 
 **Expected Result**:
 - Switch: Tokens from different experts mixed together (poor clustering)
-- SPECTRA: Tokens clearly separated by expert (clear clustering)
+- Seqorth: Tokens clearly separated by expert (clear clustering)
 
 
 **C.2 Expert Affinity Heatmap**
@@ -286,7 +286,7 @@ plt.savefig('expert_affinity_heatmap.pdf')
 
 **Expected Result**:
 - Switch: Heatmap mostly uniform (no specialization)
-- SPECTRA: Clear diagonal pattern (strong specialization)
+- Seqorth: Clear diagonal pattern (strong specialization)
 
 
 **C.3 Routing Flow Sankey Diagram**
@@ -362,7 +362,7 @@ plt.savefig('expert_representation_pca.pdf')
 
 **Expected Result**:
 - Switch: Expert vectors point in similar directions (not orthogonal)
-- SPECTRA: Expert vectors evenly distributed (orthogonal)
+- Seqorth: Expert vectors evenly distributed (orthogonal)
 
 
 **C.5 Domain Purity Bar Chart**
@@ -470,9 +470,9 @@ def bootstrap_metric(metric_fn, features, n_bootstrap=1000):
 # t-test for comparing two models
 from scipy.stats import ttest_ind
 
-def compare_models(metric_switch, metric_SPECTRA):
+def compare_models(metric_switch, metric_Seqorth):
     """Compare two models' metrics (t-test)"""
-    t_stat, p_value = ttest_ind(metric_switch, metric_SPECTRA)
+    t_stat, p_value = ttest_ind(metric_switch, metric_Seqorth)
     
     significant = p_value < 0.05
     
@@ -564,7 +564,7 @@ F. RESULTS TABLE TEMPLATES
 **TABLE: Expert Specialization Metrics Comparison**
 ```
 -------------------------------------------------------------------
-Metric                    | Switch  | SPECTRA | Improvement | p-value
+Metric                    | Switch  | Seqorth | Improvement | p-value
                           | Top-2   | (Ours)   |             |
 --------------------------|---------|----------|-------------|----------
 Expert Affinity (avg)     | 1.XX    | 2.XX     | +XX%        | <0.001
@@ -581,7 +581,7 @@ Expert Collapse Rate      | XX%     | 0%       | -XX%        | <0.001
 ```
 
 
-**TABLE: Per-Expert Domain Affinity (SPECTRA)**
+**TABLE: Per-Expert Domain Affinity (Seqorth)**
 ```
 -------------------------------------------------------------------
 Expert | Top Domain    | Affinity | Purity | Top Keywords
@@ -706,7 +706,7 @@ H. PAPER WRITING GUIDE
 
 **Key Message**:
 
-> "SPECTRA enforces orthogonality in expert representations, leading to clear 
+> "Seqorth enforces orthogonality in expert representations, leading to clear 
 > domain specialization. Quantitative analysis shows X% higher affinity scores, 
 > X% higher domain purity, and X% better token clustering quality compared to 
 > Switch Transformer."

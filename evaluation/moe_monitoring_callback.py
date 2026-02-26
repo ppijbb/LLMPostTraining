@@ -7,20 +7,20 @@ import json
 import time
 import os
 from transformers.image_utils import load_image
-from models.spectra_model import SPECTRARouter
-# SPECTRA 분석 도구 import
+from models.seqorth_model import SeqorthRouter
+# Seqorth 분석 도구 import
 try:
-    from eval.spectra_analysis import SPECTRAAnalyzer
-    spectra_ANALYSIS_AVAILABLE = True
+    from eval.seqorth_analysis import SeqorthAnalyzer
+    seqorth_ANALYSIS_AVAILABLE = True
 except ImportError:
-    spectra_ANALYSIS_AVAILABLE = False
+    seqorth_ANALYSIS_AVAILABLE = False
 
-# SPECTRA 실제 검증 도구 import
+# Seqorth 실제 검증 도구 import
 try:
-    from eval.spectra_semantic_validation import SPECTRASemanticValidator
-    spectra_VALIDATION_AVAILABLE = True
+    from eval.seqorth_semantic_validation import SeqorthSemanticValidator
+    seqorth_VALIDATION_AVAILABLE = True
 except ImportError:
-    spectra_VALIDATION_AVAILABLE = False
+    seqorth_VALIDATION_AVAILABLE = False
 
 # 벤치마크 도구 import
 try:
@@ -34,14 +34,14 @@ except ImportError:
     EXPERT_SPECIALIZATION_AVAILABLE = False
 
 try:
-    from eval.run_spectra_validation import (
+    from eval.run_seqorth_validation import (
         evaluate_model_perplexity,
         run_expression_ablation_study,
         run_information_processing_comparison,
     )
-    spectra_VALIDATION_SCRIPT_AVAILABLE = True
+    seqorth_VALIDATION_SCRIPT_AVAILABLE = True
 except ImportError:
-    spectra_VALIDATION_SCRIPT_AVAILABLE = False
+    seqorth_VALIDATION_SCRIPT_AVAILABLE = False
 
 try:
     from eval.measure_efficiency import (
@@ -202,22 +202,22 @@ class TorchMoECallback:
             'projector': {'module': None, 'name': None}
         }
         
-        # SPECTRA 분석기 (옵션)
-        self.spectra_analyzer = None
-        if spectra_ANALYSIS_AVAILABLE:
+        # Seqorth 분석기 (옵션)
+        self.seqorth_analyzer = None
+        if seqorth_ANALYSIS_AVAILABLE:
             try:
-                self.spectra_analyzer = SPECTRAAnalyzer(num_experts=num_experts, router_dim=128)
+                self.seqorth_analyzer = SeqorthAnalyzer(num_experts=num_experts, router_dim=128)
             except Exception as e:
-                self._log_debug(f"Warning: Could not initialize SPECTRAAnalyzer: {e}")
+                self._log_debug(f"Warning: Could not initialize SeqorthAnalyzer: {e}")
         
-        # SPECTRA 실제 검증기 (옵션)
-        self.spectra_validator = None
-        if spectra_VALIDATION_AVAILABLE:
+        # Seqorth 실제 검증기 (옵션)
+        self.seqorth_validator = None
+        if seqorth_VALIDATION_AVAILABLE:
             try:
                 # num_layers는 register_model에서 설정
-                self.spectra_validator = None  # 나중에 초기화
+                self.seqorth_validator = None  # 나중에 초기화
             except Exception as e:
-                self._log_debug(f"Warning: Could not initialize SPECTRASemanticValidator: {e}")
+                self._log_debug(f"Warning: Could not initialize SeqorthSemanticValidator: {e}")
 
         if save_detailed_logs:
             import os
@@ -243,15 +243,15 @@ class TorchMoECallback:
         self._register_hooks()
         
         # Layer 개수 추출 및 validator 초기화
-        if spectra_VALIDATION_AVAILABLE:
+        if seqorth_VALIDATION_AVAILABLE:
             try:
                 num_layers = self._count_moe_layers(model)
                 if num_layers > 0:
-                    self.spectra_validator = SPECTRASemanticValidator(
+                    self.seqorth_validator = SeqorthSemanticValidator(
                         num_layers=num_layers,
                         num_experts=self.num_experts
                     )
-                    self._log_debug(f"SPECTRASemanticValidator initialized with {num_layers} layers")
+                    self._log_debug(f"SeqorthSemanticValidator initialized with {num_layers} layers")
             except Exception as e:
                 self._log_debug(f"Warning: Could not initialize validator: {e}")
 
@@ -297,15 +297,15 @@ class TorchMoECallback:
     
     def _is_moe_layer(self, module):
         """MoE 레이어 감지"""
-        # 실제 사용 중인 MoE 레이어 클래스들 (치명적 버그 수정: SPECTRAMoE 추가)
+        # 실제 사용 중인 MoE 레이어 클래스들 (치명적 버그 수정: SeqorthMoE 추가)
         moe_class_names = [
-            'SPECTRAMoE',      # ← 이거 없으면 hook 0개 (가장 중요!)
+            'SeqorthMoE',      # ← 이거 없으면 hook 0개 (가장 중요!)
             'G3MoESharedExpertsLayer', 
             'G3MoESparseGRINBlock', 
             'G3MoEGRINMoE',
             'GRINMoESparseMoeBlock', 
             'G2MoEGRINMoeLayer', 
-            'SPECTRABlock',
+            'SeqorthBlock',
             'MixtralSparseMoeBlock',   # 일반적인 패턴들도 유지
             'SparseMLP', 
             'SwitchTransformerMLP'
@@ -328,9 +328,9 @@ class TorchMoECallback:
             if router is not None:
                 router_class_name = router.__class__.__name__
                 is_g3moe_router = ('G3MoERouter' in router_class_name or 
-                                  'SPECTRARouter' in router_class_name or
-                                  'SPECTRARouter' in router_class_name or
-                                  getattr(router, '_is_spectra_router', False) or
+                                  'SeqorthRouter' in router_class_name or
+                                  'SeqorthRouter' in router_class_name or
+                                  getattr(router, '_is_seqorth_router', False) or
                                   getattr(router, '_is_g3moe_router', False))
         
         is_moe = (is_moe_by_name or 
@@ -617,12 +617,12 @@ class TorchMoECallback:
     
     @torch.no_grad()
     def _extract_routing_info(self, module, input, output):
-        """모듈에서 라우팅 정보 추출. SPECTRAMoE는 last_*를 MoE에 저장하므로 모듈을 먼저 확인."""
+        """모듈에서 라우팅 정보 추출. SeqorthMoE는 last_*를 MoE에 저장하므로 모듈을 먼저 확인."""
         routing_info = {}
         lightweight = True
         router = getattr(module, 'router', None)
 
-        # ===== 우선순위 1: MoE 모듈의 last_* (SPECTRAMoE — router는 last_*를 안 가질 수 있음) =====
+        # ===== 우선순위 1: MoE 모듈의 last_* (SeqorthMoE — router는 last_*를 안 가질 수 있음) =====
         if hasattr(module, 'last_selected_experts') and module.last_selected_experts is not None:
             selected_experts = module.last_selected_experts
             if selected_experts.dim() == 2:
@@ -670,7 +670,7 @@ class TorchMoECallback:
             elif hasattr(router, 'last_num_experts'):
                 routing_info['num_experts'] = router.last_num_experts
 
-            # --- Expert-choice(quota) routing debug stats (SPECTRA OSR router) ---
+            # --- Expert-choice(quota) routing debug stats (Seqorth OSR router) ---
             # These are lightweight scalars; safe to always extract when present.
             for attr in [
                 'last_quota_cap', 'last_quota_fallback_frac', 'last_expert_choice_enabled',
@@ -742,7 +742,7 @@ class TorchMoECallback:
                 expression_loss = router_info_tuple[4]
                 
                 # ✅ output[0]이 full [batch*seq, num_experts]일 때만 expert_assignments 추출 (top-k [B,S,k]면 argmax 사용 금지)
-                # SPECTRAMoE 등은 router가 top-k weights만 반환하므로 expert_assignments는 module.last_selected_experts에서 취함
+                # SeqorthMoE 등은 router가 top-k weights만 반환하므로 expert_assignments는 module.last_selected_experts에서 취함
                 if routing_probs_full is not None and torch.is_tensor(routing_probs_full):
                     if routing_probs_full.dim() >= 2:
                         last_dim = routing_probs_full.size(-1)
@@ -874,7 +874,7 @@ class TorchMoECallback:
         if hasattr(output, 'aux_loss'):
             routing_info['aux_loss'] = output.aux_loss
         
-        # SPECTRA 관련 메트릭 (router에서 추출 가능한 경우)
+        # Seqorth 관련 메트릭 (router에서 추출 가능한 경우)
         if hasattr(module, 'router'):
             router = module.router
             # Expression loss는 계산 시점에만 존재하므로 직접 추출 불가
@@ -1688,9 +1688,9 @@ class TorchMoECallback:
             if num_experts is None:
                 num_experts = int(self.num_experts)
             
-            # SPECTRA 분석 (가능한 경우)
-            if self.spectra_analyzer is not None and hasattr(routing_info, 'gram_matrix'):
-                # SPECTRA 분석기는 forward hook에서 직접 호출해야 함
+            # Seqorth 분석 (가능한 경우)
+            if self.seqorth_analyzer is not None and hasattr(routing_info, 'gram_matrix'):
+                # Seqorth 분석기는 forward hook에서 직접 호출해야 함
                 # 여기서는 기본 메트릭만 계산
                 pass
             
@@ -1973,7 +1973,7 @@ class TorchMoECallback:
             metrics[layer_name] = layer_metrics
         
         # Layer-wise balance 분석 (실제 검증 지표)
-        if self.spectra_validator is not None and self.layer_expert_usage_counts:
+        if self.seqorth_validator is not None and self.layer_expert_usage_counts:
             # Layer index 추출 (layer_name에서)
             layer_idx_map = {}
             for layer_name in self.layer_expert_usage_counts.keys():
@@ -1985,7 +1985,7 @@ class TorchMoECallback:
                     layer_idx_map[layer_idx] = self.layer_expert_usage_counts[layer_name]
             
             if layer_idx_map:
-                layer_balance_metrics = self.spectra_validator.analyze_layer_wise_balance(layer_idx_map)
+                layer_balance_metrics = self.seqorth_validator.analyze_layer_wise_balance(layer_idx_map)
                 metrics['_layer_wise_balance'] = layer_balance_metrics
         
         return metrics
@@ -2461,10 +2461,10 @@ class TorchMoECallback:
             log_data['moe/stability/std_accuracy'] = stability_std
             log_data['moe/stability/num_points'] = len(self.accuracy_history)
 
-        # Paper 벤치마크 메트릭 추가 (SPECTRAAnalyzer가 있는 경우) - moe 카테고리로 분리
-        if self.spectra_analyzer is not None:
+        # Paper 벤치마크 메트릭 추가 (SeqorthAnalyzer가 있는 경우) - moe 카테고리로 분리
+        if self.seqorth_analyzer is not None:
             try:
-                paper_metrics = self.spectra_analyzer.get_paper_metrics_summary()
+                paper_metrics = self.seqorth_analyzer.get_paper_metrics_summary()
                 if paper_metrics:
                     # Load balancing metrics
                     if 'load_balancing' in paper_metrics:
@@ -2581,10 +2581,10 @@ class TorchMoECallback:
                                 if router_trainable > 0:
                                     router_trainable_count += 1
                     
-                    # SPECTRARouter 찾기
+                    # SeqorthRouter 찾기
                     try:
                         for name, module in self.model.named_modules():
-                            if isinstance(module, SPECTRARouter):
+                            if isinstance(module, SeqorthRouter):
                                 router_count += 1
                                 router_params = list(module.parameters(recurse=True))
                                 if router_params:
@@ -3403,31 +3403,31 @@ class TransformersMoECallbackWrapper(TrainerCallback):
         output_dir = getattr(self.torch_callback, 'log_dir', './moe_logs')
         os.makedirs(output_dir, exist_ok=True)
         
-        # 1. SPECTRA MoE Analysis (이미 실행됨, 결과만 정리)
-        if spectra_ANALYSIS_AVAILABLE and self.torch_callback.spectra_analyzer is not None:
+        # 1. Seqorth MoE Analysis (이미 실행됨, 결과만 정리)
+        if seqorth_ANALYSIS_AVAILABLE and self.torch_callback.seqorth_analyzer is not None:
             try:
-                self.torch_callback._log_debug("Running SPECTRA MoE Analysis benchmark...")
-                analyzer = self.torch_callback.spectra_analyzer
+                self.torch_callback._log_debug("Running Seqorth MoE Analysis benchmark...")
+                analyzer = self.torch_callback.seqorth_analyzer
                 aggregated = analyzer.get_aggregated_metrics()
                 paper_summary = analyzer.get_paper_metrics_summary()
                 
-                benchmark_results['spectra_analysis'] = {
+                benchmark_results['seqorth_analysis'] = {
                     'aggregated_metrics': aggregated,
                     'paper_summary': paper_summary,
                 }
                 
                 if self.torch_callback.log_to_console:
-                    self.torch_callback._log_debug(f"  ✓ SPECTRA MoE Analysis completed")
+                    self.torch_callback._log_debug(f"  ✓ Seqorth MoE Analysis completed")
             except Exception as e:
-                self.torch_callback._log_debug(f"  ✗ SPECTRA MoE Analysis failed: {e}")
+                self.torch_callback._log_debug(f"  ✗ Seqorth MoE Analysis failed: {e}")
                 import traceback
                 if self.torch_callback.debug_logging:
                     self.torch_callback._log_debug(traceback.format_exc())
         
-        # 2. SPECTRA Semantic Validation
-        if spectra_VALIDATION_AVAILABLE:
+        # 2. Seqorth Semantic Validation
+        if seqorth_VALIDATION_AVAILABLE:
             try:
-                self.torch_callback._log_debug("Running SPECTRA Semantic Validation benchmark...")
+                self.torch_callback._log_debug("Running Seqorth Semantic Validation benchmark...")
                 
                 # Layer-wise balance 분석을 위한 데이터 수집
                 if hasattr(self.torch_callback, 'layer_expert_usage_counts'):
@@ -3439,25 +3439,25 @@ class TransformersMoECallbackWrapper(TrainerCallback):
                         # 모델에서 직접 추출 시도
                         num_layers = sum(1 for _ in model.named_modules() if 'layer' in str(_).lower() or 'block' in str(_).lower())
                     
-                    if num_layers > 0 and self.torch_callback.spectra_validator is None:
+                    if num_layers > 0 and self.torch_callback.seqorth_validator is None:
                         # Validator 초기화
-                        self.torch_callback.spectra_validator = SPECTRASemanticValidator(
+                        self.torch_callback.seqorth_validator = SeqorthSemanticValidator(
                             num_layers=num_layers,
                             num_experts=self.torch_callback.num_experts
                         )
                     
-                    if self.torch_callback.spectra_validator is not None:
-                        layer_balance = self.torch_callback.spectra_validator.analyze_layer_wise_balance(
+                    if self.torch_callback.seqorth_validator is not None:
+                        layer_balance = self.torch_callback.seqorth_validator.analyze_layer_wise_balance(
                             layer_expert_usage_counts=layer_expert_usage
                         )
-                        benchmark_results['spectra_semantic_validation'] = {
+                        benchmark_results['seqorth_semantic_validation'] = {
                             'layer_wise_balance': layer_balance,
                         }
                         
                         if self.torch_callback.log_to_console:
-                            self.torch_callback._log_debug(f"  ✓ SPECTRA Semantic Validation completed")
+                            self.torch_callback._log_debug(f"  ✓ Seqorth Semantic Validation completed")
             except Exception as e:
-                self.torch_callback._log_debug(f"  ✗ SPECTRA Semantic Validation failed: {e}")
+                self.torch_callback._log_debug(f"  ✗ Seqorth Semantic Validation failed: {e}")
                 import traceback
                 if self.torch_callback.debug_logging:
                     self.torch_callback._log_debug(traceback.format_exc())
@@ -3518,10 +3518,10 @@ class TransformersMoECallbackWrapper(TrainerCallback):
                 if self.torch_callback.debug_logging:
                     self.torch_callback._log_debug(traceback.format_exc())
         
-        # 4. SPECTRA Validation (Perplexity 등)
-        if spectra_VALIDATION_SCRIPT_AVAILABLE and eval_dataloader is not None:
+        # 4. Seqorth Validation (Perplexity 등)
+        if seqorth_VALIDATION_SCRIPT_AVAILABLE and eval_dataloader is not None:
             try:
-                self.torch_callback._log_debug("Running SPECTRA Validation benchmark...")
+                self.torch_callback._log_debug("Running Seqorth Validation benchmark...")
                 
                 # 샘플 데이터 수집
                 eval_dataset = []
@@ -3563,7 +3563,7 @@ class TransformersMoECallbackWrapper(TrainerCallback):
                         self.torch_callback._log_debug(f"  ⚠️ Perplexity evaluation error: {e}")
                         perplexity_results = {'perplexity': 0.0, 'loss': 0.0}
                     
-                    benchmark_results['spectra_validation'] = {
+                    benchmark_results['seqorth_validation'] = {
                         'perplexity': perplexity_results,
                     }
                     
@@ -3577,9 +3577,9 @@ class TransformersMoECallbackWrapper(TrainerCallback):
                             })
                     
                     if self.torch_callback.log_to_console:
-                        self.torch_callback._log_debug(f"  ✓ SPECTRA Validation completed (PPL: {perplexity_results.get('perplexity', 0.0):.4f})")
+                        self.torch_callback._log_debug(f"  ✓ Seqorth Validation completed (PPL: {perplexity_results.get('perplexity', 0.0):.4f})")
             except Exception as e:
-                self.torch_callback._log_debug(f"  ✗ SPECTRA Validation failed: {e}")
+                self.torch_callback._log_debug(f"  ✗ Seqorth Validation failed: {e}")
                 import traceback
                 if self.torch_callback.debug_logging:
                     self.torch_callback._log_debug(traceback.format_exc())
@@ -3676,9 +3676,9 @@ class TransformersMoECallbackWrapper(TrainerCallback):
         eval_dataloader=None,
         **kwargs
     ):
-        """Evaluation 시점에 SPECTRA 지표 측정"""
-        # SPECTRAAnalyzer가 없으면 스킵
-        if self.torch_callback.spectra_analyzer is None:
+        """Evaluation 시점에 Seqorth 지표 측정"""
+        # SeqorthAnalyzer가 없으면 스킵
+        if self.torch_callback.seqorth_analyzer is None:
             return
         
         try:
@@ -3688,7 +3688,7 @@ class TransformersMoECallbackWrapper(TrainerCallback):
                 model.eval()
             
             # Analyzer 초기화 (eval 전용)
-            eval_analyzer = self.torch_callback.spectra_analyzer
+            eval_analyzer = self.torch_callback.seqorth_analyzer
             eval_analyzer.reset()  # 이전 데이터 초기화
             
             # Router와 MoE Block에서 routing 정보 수집을 위한 hook 등록

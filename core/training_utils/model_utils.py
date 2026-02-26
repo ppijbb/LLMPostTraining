@@ -191,9 +191,9 @@ def check_model_size(model, logger: logging.Logger, context: str = "model_check"
             router_params = 0
             router_count = 0
             router_param_ptrs = set()  # Track unique parameter pointers
-            from models.spectra_model import SPECTRARouter
+            from models.seqorth_model import SeqorthRouter
             for name, module in model.named_modules():
-                if isinstance(module, SPECTRARouter):
+                if isinstance(module, SeqorthRouter):
                     router_count += 1
                     # Count unique parameters only (shared routers have same param pointers)
                     for p in module.parameters():
@@ -208,7 +208,7 @@ def check_model_size(model, logger: logging.Logger, context: str = "model_check"
                 # Detailed router breakdown
                 if router_count == 1:
                     # Single router - show detailed breakdown
-                    router = next((m for m in model.modules() if isinstance(m, SPECTRARouter)), None)
+                    router = next((m for m in model.modules() if isinstance(m, SeqorthRouter)), None)
                     if router:
                         router_details = {}
                         if hasattr(router, 'load_balancer'):
@@ -234,9 +234,9 @@ def check_model_size(model, logger: logging.Logger, context: str = "model_check"
             qwen_expert_params = 0
             qwen_expert_count = 0
 
-            from models.spectra_model import SPECTRAMoE
+            from models.seqorth_model import SeqorthMoE
             for name, module in model.named_modules():
-                if isinstance(module, SPECTRAMoE):
+                if isinstance(module, SeqorthMoE):
                     expert_count += 1
                     expert_params += sum(p.numel() for p in module.parameters())
 
@@ -247,7 +247,7 @@ def check_model_size(model, logger: logging.Logger, context: str = "model_check"
 
             if expert_count > 0:
                 component_params['moe_experts'] = expert_params
-                logger.info(f"  - SPECTRA MoE modules found: {expert_count}")
+                logger.info(f"  - Seqorth MoE modules found: {expert_count}")
 
             if qwen_expert_count > 0:
                 component_params['qwen_experts'] = qwen_expert_params
@@ -303,7 +303,7 @@ def get_dynamic_lora_target_modules(model, logger: logging.Logger):
     scanning all modules causes RAM explosion. We only scan the FIRST MoE instance
     to detect the expert structure, then validate against actual model structure.
     """
-    from models.spectra_model import SPECTRAMoE, SPECTRARouter
+    from models.seqorth_model import SeqorthMoE, SeqorthRouter
     import torch.nn as nn
     import re
     
@@ -360,7 +360,7 @@ def get_dynamic_lora_target_modules(model, logger: logging.Logger):
             r"\.bias_proj$",
             r"\.linear_projection$",
             r"\.projection_head$",
-            r"\.projection$",  # SPECTRA Router components
+            r"\.projection$",  # Seqorth Router components
         ]
         
         # Match patterns against actual module names (excluding vision)
@@ -389,8 +389,8 @@ def get_dynamic_lora_target_modules(model, logger: logging.Logger):
         if any(prefix in name.lower() for prefix in vision_prefixes):
             continue
         
-        # Only scan the FIRST SPECTRAMoE instance to detect structure
-        if isinstance(module, SPECTRAMoE) and not first_moe_scanned:
+        # Only scan the FIRST SeqorthMoE instance to detect structure
+        if isinstance(module, SeqorthMoE) and not first_moe_scanned:
             first_moe_scanned = True
             
             if hasattr(module, 'experts') and len(module.experts) > 0:

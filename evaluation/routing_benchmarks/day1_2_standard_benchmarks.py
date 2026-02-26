@@ -2,7 +2,7 @@
 """
 D+1~2: Standard Benchmarks using lm-evaluation-harness
 
-Evaluate SPECTRA and baseline models on standard benchmarks:
+Evaluate Seqorth and baseline models on standard benchmarks:
 - Knowledge: MMLU
 - Reasoning: GSM8K, ARC-Challenge
 - Commonsense: HellaSwag, Winogrande
@@ -22,7 +22,7 @@ import subprocess
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from eval.routing_benchmarks.utils import (
-    load_spectra_checkpoint,
+    load_seqorth_checkpoint,
     load_baseline_model,
     prepare_model_for_eval,
     MetricTracker
@@ -118,7 +118,7 @@ def main():
     parser.add_argument(
         "--checkpoint",
         type=str,
-        help="Path to SPECTRA checkpoint (overrides config)"
+        help="Path to Seqorth checkpoint (overrides config)"
     )
     parser.add_argument(
         "--output_dir",
@@ -129,7 +129,7 @@ def main():
     parser.add_argument(
         "--models",
         nargs="+",
-        help="Models to evaluate (default: SPECTRA + baselines)"
+        help="Models to evaluate (default: Seqorth + baselines)"
     )
     parser.add_argument(
         "--tasks",
@@ -137,9 +137,9 @@ def main():
         help="Tasks to run (default: all from config)"
     )
     parser.add_argument(
-        "--skip_spectra",
+        "--skip_seqorth",
         action="store_true",
-        help="Skip SPECTRA evaluation"
+        help="Skip Seqorth evaluation"
     )
     parser.add_argument(
         "--skip_baselines",
@@ -174,16 +174,16 @@ def main():
     batch_size = config["day1_2_benchmarks"]["batch_size"]
     limit = config["day1_2_benchmarks"].get("limit")
     
-    # ===== Evaluate SPECTRA =====
-    if not args.skip_spectra:
+    # ===== Evaluate Seqorth =====
+    if not args.skip_seqorth:
         logger.info("=" * 80)
-        logger.info("Evaluating SPECTRA")
+        logger.info("Evaluating Seqorth")
         logger.info("=" * 80)
         
         checkpoint_path = args.checkpoint or config["model"]["checkpoint_path"]
-        model_name = "SPECTRA"
+        model_name = "Seqorth"
         
-        model_output_dir = output_dir / "spectra"
+        model_output_dir = output_dir / "seqorth"
         
         all_results = {}
         
@@ -223,10 +223,10 @@ def main():
             except Exception as e:
                 logger.error(f"Failed to evaluate {category}: {e}")
         
-        # Save SPECTRA results
+        # Save Seqorth results
         tracker.add_model_result("day1_2", model_name, all_results)
         
-        logger.info(f"SPECTRA results: {all_results}")
+        logger.info(f"Seqorth results: {all_results}")
     
     # ===== Evaluate Baselines =====
     if not args.skip_baselines and config["day1_2_benchmarks"].get("run_baselines", True):
@@ -305,7 +305,7 @@ def main():
     
     # Get all model results
     summary = {}
-    for model_name in ["SPECTRA"] + [baseline_config["models"][k]["name"] 
+    for model_name in ["Seqorth"] + [baseline_config["models"][k]["name"] 
                                       for k in baseline_names 
                                       if k in baseline_config["models"]]:
         results = tracker.get_model_result("day1_2", model_name)

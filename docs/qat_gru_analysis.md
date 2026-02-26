@@ -4,7 +4,7 @@
 
 ### Global GRU 구현
 ```python
-# models/spectra_model.py:891-897
+# models/seqorth_model.py:891-897
 self.load_balancer = nn.GRU(
     input_size=self.hidden_size,
     hidden_size=self.num_experts * self.router_dim,

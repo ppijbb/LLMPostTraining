@@ -18,37 +18,37 @@
 #### A.1 Expert Specialization (핵심 주장)
 - **Expert Overlap**: Jaccard similarity between expert token sets
   - 낮을수록 specialization 우수
-  - **목표**: SPECTRA < Switch Top-2 < Switch Top-1
+  - **목표**: Seqorth < Switch Top-2 < Switch Top-1
 - **Gram Matrix Orthogonality**: mean(|G_ij|) for i ≠ j
   - 낮을수록 orthogonal (specialization 우수)
-  - **목표**: SPECTRA < 모든 baseline
+  - **목표**: Seqorth < 모든 baseline
 - **Expert Diversity Score**: 1 - mean(expert_similarity)
   - 높을수록 diverse/specialized
-  - **목표**: SPECTRA > 모든 baseline
+  - **목표**: Seqorth > 모든 baseline
 - **Expert-Task Correlation**: Expert별 task specialization score
   - 각 expert가 특정 task/domain에 특화되는 정도
 
 #### A.2 Load Balancing (필수 비교 지표)
 - **Expert Entropy**: H(expert) = -Σᵢ pᵢ log pᵢ
   - 높을수록 균형 (이상: log(E))
-  - **목표**: SPECTRA ≈ Switch Top-2 > Switch Top-1
+  - **목표**: Seqorth ≈ Switch Top-2 > Switch Top-1
 - **Load Balancing Coefficient (CV)**: std / mean
   - 낮을수록 균형
-  - **목표**: SPECTRA < Switch Top-1 < Switch Top-2
+  - **목표**: Seqorth < Switch Top-1 < Switch Top-2
 - **Expert Collapse Rate**: 사용되지 않는 expert 비율
-  - **목표**: SPECTRA = 0% (Hash routing 수준)
+  - **목표**: Seqorth = 0% (Hash routing 수준)
 - **MaxVio (Maximum Violation)**: max deviation from mean load
-  - **목표**: SPECTRA < Switch routing
+  - **목표**: Seqorth < Switch routing
 
 #### A.3 Routing Decision Quality
 - **Routing Entropy**: Per-token routing entropy
   - 적절한 수준 유지 (너무 낮으면 collapse, 너무 높으면 불안정)
 - **Routing Consistency**: Checkpoint 간 routing 일관성 (%)
-  - **목표**: SPECTRA > Switch routing (sequential context로 인해)
+  - **목표**: Seqorth > Switch routing (sequential context로 인해)
 - **Sequential Routing Consistency**: 연속 토큰의 expert 선택 일관성
-  - **목표**: SPECTRA > 모든 baseline (GRU의 장점)
+  - **목표**: Seqorth > 모든 baseline (GRU의 장점)
 - **Top-k Overlap**: 연속 토큰의 top-k expert 겹침 비율
-  - **목표**: SPECTRA > Switch (context-aware routing)
+  - **목표**: Seqorth > Switch (context-aware routing)
 
 #### A.4 Expression Projection Effectiveness
 - **Expression-Routing Alignment**: Expression과 routing의 일치도
@@ -64,7 +64,7 @@
 **논문**: Fedus et al., 2021
 
 **비교해야 할 지표** (2025년 11월 기준 최신 SOTA):
-| 지표 | Switch (2021) | Expert Choice (2022) | SOTA 2025 (ERMoE/LPR) | SPECTRA (목표) |
+| 지표 | Switch (2021) | Expert Choice (2022) | SOTA 2025 (ERMoE/LPR) | Seqorth (목표) |
 |------|---------------|----------------------|------------------------|-----------------|
 | Expert Overlap | 30-60% | 35-50% | 8-20% | < 15% |
 | Gram Orthogonality* | 0.60-0.80 | 0.65-0.75 | 0.88-0.95 | > 0.90 ✅ (현재 0.94) |
@@ -102,7 +102,7 @@
 **논문**: Zhou et al., 2022
 
 **비교해야 할 지표**:
-| 지표 | Expert Choice | SPECTRA (목표) |
+| 지표 | Expert Choice | Seqorth (목표) |
 |------|--------------|-----------------|
 | Load Balancing CV | 0.2-0.4 | < 0.30 |
 | Expert Overlap | 35-50% | < 25% |
@@ -111,7 +111,7 @@
 
 **특징**: 
 - Load balancing은 우수하지만 specialization은 제한적
-- **SPECTRA의 장점**: Orthogonality constraint로 specialization 향상
+- **Seqorth의 장점**: Orthogonality constraint로 specialization 향상
 
 ---
 
@@ -119,7 +119,7 @@
 **논문**: Roller et al., 2021
 
 **비교해야 할 지표**:
-| 지표 | Hash Routing | SPECTRA (목표) |
+| 지표 | Hash Routing | Seqorth (목표) |
 |------|--------------|-----------------|
 | Load Balancing CV | ~0.0 (perfect) | < 0.1 (near-perfect) |
 | Expert Overlap | High (no specialization) | Low (specialized) |
@@ -136,7 +136,7 @@
 
 | Variant | Expert Overlap | Gram Ortho | Load Balance CV | Routing Consistency |
 |---------|----------------|------------|-----------------|---------------------|
-| SPECTRA-Full | 18-22% | 0.12-0.18 | 0.18-0.25 | 82-88% |
+| Seqorth-Full | 18-22% | 0.12-0.18 | 0.18-0.25 | 82-88% |
 | -Expression | 28-35% | 0.20-0.28 | 0.25-0.35 | 75-82% |
 | -GRU | 25-32% | 0.15-0.22 | 0.22-0.32 | 70-78% |
 | -SpecialityPenalty | 35-45% | 0.30-0.40 | 0.30-0.45 | 72-80% |
@@ -154,13 +154,13 @@
 
 #### D.1 시간에 따른 변화
 - **Expert Usage Over Time**: 각 expert의 사용량 변화
-  - **목표**: SPECTRA은 안정적, Switch는 collapse 경향
+  - **목표**: Seqorth은 안정적, Switch는 collapse 경향
 - **Routing Entropy Over Time**: Routing entropy의 변화
-  - **목표**: SPECTRA은 적절한 수준 유지
+  - **목표**: Seqorth은 적절한 수준 유지
 - **Expert Overlap Over Time**: 시간에 따른 overlap 변화
-  - **목표**: SPECTRA은 감소, Switch는 증가 또는 유지
+  - **목표**: Seqorth은 감소, Switch는 증가 또는 유지
 - **Gram Orthogonality Over Time**: Orthogonality의 변화
-  - **목표**: SPECTRA은 증가, baseline은 변화 없음
+  - **목표**: Seqorth은 증가, baseline은 변화 없음
 
 ---
 
@@ -389,7 +389,7 @@
 J(i,j) = |Tokens(i) ∩ Tokens(j)| / |Tokens(i) ∪ Tokens(j)|
 ```
 - **측정**: 각 expert pair 간 token set overlap
-- **목표**: SPECTRA < Switch Top-2 < Switch Top-1
+- **목표**: Seqorth < Switch Top-2 < Switch Top-1
 - **논문 표**: Expert Overlap Matrix (E × E)
 
 **2. Gram Matrix Orthogonality**
@@ -397,7 +397,7 @@ J(i,j) = |Tokens(i) ∩ Tokens(j)| / |Tokens(i) ∪ Tokens(j)|
 Ortho = mean(|G_ij|) for i ≠ j, where G = R @ R^T
 ```
 - **측정**: Routing representation의 Gram matrix off-diagonal
-- **목표**: SPECTRA < 모든 baseline
+- **목표**: Seqorth < 모든 baseline
 - **논문 표**: Gram Matrix Heatmap
 
 **3. Expert Diversity Score**
@@ -405,7 +405,7 @@ Ortho = mean(|G_ij|) for i ≠ j, where G = R @ R^T
 Diversity = 1 - mean(expert_similarity_matrix[off_diagonal])
 ```
 - **측정**: Expert 간 similarity의 역수
-- **목표**: SPECTRA > 모든 baseline
+- **목표**: Seqorth > 모든 baseline
 
 **4. Expert-Task Specialization**
 - **측정**: 각 expert가 특정 task/domain에 특화되는 정도
@@ -419,27 +419,27 @@ Diversity = 1 - mean(expert_similarity_matrix[off_diagonal])
 H(expert) = -Σᵢ pᵢ log pᵢ
 Normalized = H / log(E)
 ```
-- **목표**: SPECTRA ≈ Switch Top-2 (균형 유지)
+- **목표**: Seqorth ≈ Switch Top-2 (균형 유지)
 - **논문 표**: Expert Usage Distribution (Histogram)
 
 **2. Load Balancing Coefficient (CV)**
 ```
 CV = std(expert_loads) / mean(expert_loads)
 ```
-- **목표**: SPECTRA < Switch Top-1 < Switch Top-2
+- **목표**: Seqorth < Switch Top-1 < Switch Top-2
 - **논문 표**: CV Over Time (Line Plot)
 
 **3. Expert Collapse Rate**
 ```
 Collapse Rate = (num_unused_experts / total_experts) × 100%
 ```
-- **목표**: SPECTRA = 0% (Hash routing 수준)
+- **목표**: Seqorth = 0% (Hash routing 수준)
 
 **4. MaxVio (Maximum Violation)**
 ```
 MaxVio = max(|expert_load - mean_load|)
 ```
-- **목표**: SPECTRA < Switch routing
+- **목표**: Seqorth < Switch routing
 
 #### C.3 Routing Decision Quality (필수)
 
@@ -453,21 +453,21 @@ H(token) = -Σᵢ p(expert_i | token) log p(expert_i | token)
 ```
 Consistency = % of tokens routed to same experts across checkpoints
 ```
-- **목표**: SPECTRA > Switch routing (sequential context로 인해)
+- **목표**: Seqorth > Switch routing (sequential context로 인해)
 - **논문 표**: Consistency Over Training Steps
 
 **3. Sequential Routing Consistency**
 ```
 Sequential Consistency = % of consecutive tokens with same top-1 expert
 ```
-- **목표**: SPECTRA > 모든 baseline (GRU의 장점)
+- **목표**: Seqorth > 모든 baseline (GRU의 장점)
 - **논문 표**: Sequential Patterns (Heatmap)
 
 **4. Top-k Overlap**
 ```
 Overlap = |Experts(t) ∩ Experts(t+1)| / |Experts(t) ∪ Experts(t+1)|
 ```
-- **목표**: SPECTRA > Switch (context-aware routing)
+- **목표**: Seqorth > Switch (context-aware routing)
 
 #### C.4 Expression Projection Effectiveness
 
@@ -539,12 +539,12 @@ Ortho = 1 - ||G_expr - I||_F / (E * sqrt(2))
 - [ ] Dense MLP baseline (upper bound)
 
 ### 2. Ablation Variants
-- [ ] SPECTRA-Full (baseline)
-- [ ] SPECTRA w/o Expression
-- [ ] SPECTRA w/o GRU
-- [ ] SPECTRA w/o Speciality Penalty
-- [ ] SPECTRA w/o Orthogonal Constraint
-- [ ] SPECTRA w/o All Enhancements
+- [ ] Seqorth-Full (baseline)
+- [ ] Seqorth w/o Expression
+- [ ] Seqorth w/o GRU
+- [ ] Seqorth w/o Speciality Penalty
+- [ ] Seqorth w/o Orthogonal Constraint
+- [ ] Seqorth w/o All Enhancements
 
 ### 3. Model Scales
 - [ ] GPT-2-Medium (345M) - Dense to MoE
@@ -552,7 +552,7 @@ Ortho = 1 - ||G_expr - I||_F / (E * sqrt(2))
 - [ ] Mixtral-8x7B - Router replacement
 
 ### 4. Routing Metrics Evaluation Setup (최우선)
-- [ ] Expert specialization analysis tools (spectra_analysis.py)
+- [ ] Expert specialization analysis tools (seqorth_analysis.py)
 - [ ] Load balancing metrics collection
 - [ ] Routing consistency measurement
 - [ ] Sequential routing pattern analysis
@@ -598,7 +598,7 @@ ERMoE (2025) | N/A | N/A | N/A | N/A | N/A | No | arxiv:2511.10971 (metrics not 
 LPR (2025) | N/A | N/A | N/A | Gini: 0.035 | N/A | No | arxiv:2506.21328 (Gini only)
 LASER (2025) | N/A | N/A | N/A | N/A | N/A | No | arxiv:2510.03293 (metrics not reported)
 RoMA (2025) | N/A | N/A | N/A | N/A | N/A | No | arxiv:2511.07419 (metrics not reported)
-SPECTRA (Ours) | 측정 필요 | 0.94 ✅ | 측정 필요 | 0.3 ❌ | 측정 필요 | No | 직접 측정
+Seqorth (Ours) | 측정 필요 | 0.94 ✅ | 측정 필요 | 0.3 ❌ | 측정 필요 | No | 직접 측정
 ```
 
 **실제 논문에서 보고된 Metrics**:
@@ -637,7 +637,7 @@ SPECTRA (Ours) | 측정 필요 | 0.94 ✅ | 측정 필요 | 0.3 ❌ | 측정 필
 ```
 Variant | Expert Overlap | Gram Ortho | Load Balance CV | Routing Consistency | Sequential Consistency
 --------|----------------|------------|-----------------|---------------------|------------------------
-SPECTRA-Full | 18-22% | 0.12-0.18 | 0.18-0.25 | 82-88% | 45-55%
+Seqorth-Full | 18-22% | 0.12-0.18 | 0.18-0.25 | 82-88% | 45-55%
   -Expression | 28-35% | 0.20-0.28 | 0.25-0.35 | 75-82% | 40-50%
   -GRU | 25-32% | 0.15-0.22 | 0.22-0.32 | 70-78% | 30-40%
   -SpecialityPenalty | 35-45% | 0.30-0.40 | 0.30-0.45 | 72-80% | 42-52%
@@ -661,7 +661,7 @@ Switch Top-1 | XX.X | XX.X | XX.X | XX.X | XX.X | XX.X
 Switch Top-2 | XX.X | XX.X | XX.X | XX.X | XX.X | XX.X
 Expert Choice | XX.X | XX.X | XX.X | XX.X | XX.X | XX.X
 Hash Routing | XX.X | XX.X | XX.X | XX.X | XX.X | XX.X
-SPECTRA (Ours) | XX.X | XX.X | XX.X | XX.X | XX.X | XX.X
+Seqorth (Ours) | XX.X | XX.X | XX.X | XX.X | XX.X | XX.X
 ```
 
 ### Table 4: Specialized Domains (보조 표)
@@ -669,7 +669,7 @@ SPECTRA (Ours) | XX.X | XX.X | XX.X | XX.X | XX.X | XX.X
 Model | HumanEval | MBPP | GSM8K | MATH | PubMedQA | SciFact
 ------|-----------|------|-------|------|----------|--------
 Switch Top-2 | XX.X | XX.X | XX.X | XX.X | XX.X | XX.X
-SPECTRA (Ours) | XX.X | XX.X | XX.X | XX.X | XX.X | XX.X
+Seqorth (Ours) | XX.X | XX.X | XX.X | XX.X | XX.X | XX.X
 Improvement | +X.X% | +X.X% | +X.X% | +X.X% | +X.X% | +X.X%
 ```
 
@@ -687,7 +687,7 @@ Llama 4 Maverick (2025) | 2.8-2.9* | 0.6-0.8* | 8-15%* | N/A** | N/A** | No
 ERMoE (2025) | 2.7-2.9 | 0.6-0.8 | 8-18% | 0.90-0.95 | < 0.1 | No
 LPR (2025) | 2.7-2.9 | 0.6-0.8 | 10-20% | 0.88-0.93 | < 0.05 | No
 Loss-Free Balancing (2024) | 2.6-2.9 | 0.6-0.8 | 12-22% | 0.87-0.92 | < 0.12 | No
-SPECTRA (Ours) | ≥ 2.7 | 0.5-0.7 | < 15% | > 0.90 | < 0.1 | No
+Seqorth (Ours) | ≥ 2.7 | 0.5-0.7 | < 15% | > 0.90 | < 0.1 | No
 ```
 
 **참고**:
@@ -705,7 +705,7 @@ Dense MLP | XX.X | XX.X | XX.X | XXXX
 Switch Top-1 | XX.X | XX.X | XX.X | XXXX
 Switch Top-2 | XX.X | XX.X | XX.X | XXXX
 Expert Choice | XX.X | XX.X | XX.X | XXXX
-SPECTRA (Ours) | XX.X | XX.X | XX.X | XXXX
+Seqorth (Ours) | XX.X | XX.X | XX.X | XXXX
 ```
 
 ---
@@ -993,7 +993,7 @@ SPECTRA (Ours) | XX.X | XX.X | XX.X | XXXX
 
 ### 비교 기준 재설정
 - **LPR의 Gini 0.035**: Near-perfect balancing의 기준
-- **자체 측정값**: SPECTRA의 실제 측정값과 비교
+- **자체 측정값**: Seqorth의 실제 측정값과 비교
 - **Performance gain**: Advancing Expert Specialization의 23.79% gain과 비교
 
 ### 벤치마크 데이터 소스
@@ -1057,7 +1057,7 @@ SPECTRA (Ours) | XX.X | XX.X | XX.X | XXXX
 ### 수치 해석 가이드
 
 - **범위 표기 (예: 18-22%)**: 여러 실험/seed에서의 변동 범위를 나타냄
-- **목표 달성 여부**: SPECTRA이 baseline보다 우수한지 확인
+- **목표 달성 여부**: Seqorth이 baseline보다 우수한지 확인
 - **Ablation Study**: 각 component 제거 시 변화량이 예상 범위 내인지 확인
 
 ### 다음 단계

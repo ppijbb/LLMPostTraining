@@ -61,7 +61,7 @@ def extract_training_curves(
     
     # Extract specified metrics or all
     if metrics is None:
-        # Default metrics for SPECTRA
+        # Default metrics for Seqorth
         metrics = [
             "moe/avg_expert_cv",
             "moe/avg_maxvio",
@@ -215,7 +215,7 @@ def extract_cv_curve(
     """
     Extract Coefficient of Variation (CV) curve from training.
     
-    This is a key metric for SPECTRA showing load balancing.
+    This is a key metric for Seqorth showing load balancing.
     
     Args:
         run_id: WandB run ID

@@ -21,7 +21,7 @@ import json
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from eval.routing_benchmarks.utils import (
-    load_spectra_checkpoint,
+    load_seqorth_checkpoint,
     load_baseline_model,
     MetricTracker,
     plot_throughput_comparison,
@@ -185,7 +185,7 @@ def run_ablation_study(
         
         try:
             # Load model
-            model, tokenizer = load_spectra_checkpoint(
+            model, tokenizer = load_seqorth_checkpoint(
                 checkpoint_path,
                 device="cuda",
                 torch_dtype=torch.bfloat16,
@@ -278,12 +278,12 @@ def main():
     # ===== Step 1: vLLM Throughput Measurement =====
     if not args.skip_throughput:
         logger.info("=" * 80)
-        logger.info("Measuring SPECTRA throughput with vLLM")
+        logger.info("Measuring Seqorth throughput with vLLM")
         logger.info("=" * 80)
         
         throughput_config = config["day5_efficiency"]["throughput"]
         
-        spectra_metrics = measure_vllm_throughput(
+        seqorth_metrics = measure_vllm_throughput(
             model_path=checkpoint_path,
             input_lengths=throughput_config["input_lengths"],
             batch_sizes=throughput_config["batch_sizes"],
@@ -292,7 +292,7 @@ def main():
             tensor_parallel_size=config["compute"]["tensor_parallel_size"]
         )
         
-        tracker.add_metric("day5", "throughput_spectra", spectra_metrics)
+        tracker.add_metric("day5", "throughput_seqorth", seqorth_metrics)
         
         # Measure baseline throughput
         baseline_metrics = {}
@@ -326,12 +326,12 @@ def main():
                     logger.error(f"Failed to measure {model_name}: {e}")
         
         # Generate comparison plot
-        if spectra_metrics and baseline_metrics:
+        if seqorth_metrics and baseline_metrics:
             logger.info("Generating throughput comparison plot...")
             
-            spectra_plot_metrics = {
-                "tokens_per_sec": spectra_metrics.get("avg_throughput", 0),
-                "ttft_ms": spectra_metrics.get("avg_ttft", 0)
+            seqorth_plot_metrics = {
+                "tokens_per_sec": seqorth_metrics.get("avg_throughput", 0),
+                "ttft_ms": seqorth_metrics.get("avg_ttft", 0)
             }
             
             baseline_plot_metrics = {
@@ -343,7 +343,7 @@ def main():
             }
             
             plot_throughput_comparison(
-                spectra_metrics=spectra_plot_metrics,
+                seqorth_metrics=seqorth_plot_metrics,
                 baseline_metrics=baseline_plot_metrics,
                 output_file=output_dir / "throughput_comparison.png"
             )

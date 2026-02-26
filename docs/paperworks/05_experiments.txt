@@ -2,7 +2,7 @@
 EXPERIMENTS
 =================================================================
 
-We design experiments to validate SPECTRA as a \emph{routing methodology} under the exact implementation shipped in this repository. Our primary objective is to measure and improve routing quality (specialization, balance, stability) using metrics attributable to routing, and only then finalize downstream benchmark tables.
+We design experiments to validate Seqorth as a \emph{routing methodology} under the exact implementation shipped in this repository. Our primary objective is to measure and improve routing quality (specialization, balance, stability) using metrics attributable to routing, and only then finalize downstream benchmark tables.
 
 
 -------------------------------------------------------------------
@@ -13,7 +13,7 @@ We design experiments to validate SPECTRA as a \emph{routing methodology} under 
 Our primary goal is to validate routing quality under the exact implementation shipped in this repository. We therefore prioritize routing metrics (specialization, balance, stability) and run targeted sweeps to close the remaining load-balance gap (target CV < 0.1) before finalizing full benchmark tables.
 
 **Default Run (this repo's reference config)**:
-We report a default configuration based on `spectra_sft/config/spectra_small_config.json`, and then sweep only routing-sensitive hyperparameters:
+We report a default configuration based on `seqorth_sft/config/seqorth_small_config.json`, and then sweep only routing-sensitive hyperparameters:
 - Base model/tokenizer: `HuggingFaceTB/SmolVLM-256M-Instruct` (tokenizer path)
 - Dataset: `HuggingFaceTB/smoltalk` (SFT-style)
 - Routed experts: E = 32
@@ -60,7 +60,7 @@ We will report downstream task metrics on standard suites (language understandin
 5.3 BASELINE METHODS
 -------------------------------------------------------------------
 
-We compare SPECTRA against the following routing methods:
+We compare Seqorth against the following routing methods:
 
 **1. Switch Router (Top-1)**:
 Standard Switch Transformer routing [Fedus et al., 2021] with:
@@ -95,34 +95,34 @@ When applicable, we compare against a dense baseline to contextualize routing ch
 
 To understand the contribution of each component, we create the following ablation variants:
 
-**SPECTRA-Full (Ours)**:
+**Seqorth-Full (Ours)**:
 Complete method with all components.
 
-**SPECTRA w/o Expression (-Expression)**:
+**Seqorth w/o Expression (-Expression)**:
 Remove expression projector, use routing logits directly:
 - No orthogonal projection
 - Routing logits used as expression logits
 - All other components unchanged
 
-**SPECTRA w/o GRU (-GRU)**:
+**Seqorth w/o GRU (-GRU)**:
 Replace GRU with linear layer:
 - Linear: h → routing_logits (no sequential state)
 - No hidden state passing between layers
 - All other components unchanged
 
-**SPECTRA w/o Repulsion (-Repulsion / λ=0)**:
+**Seqorth w/o Repulsion (-Repulsion / λ=0)**:
 Disable OSR repulsion term to test whether repulsion is the primary driver of expert separation.
 
-**SPECTRA w/o Quota Selection (-Quota)**:
+**Seqorth w/o Quota Selection (-Quota)**:
 Disable quota-constrained selection to quantify how much imbalance arises from discrete top-k.
 
-**SPECTRA w/o Orthogonal Constraint (-OrthoConstraint)**:
+**Seqorth w/o Orthogonal Constraint (-OrthoConstraint)**:
 Remove orthogonal loss for expression projector:
 - No L_ortho in training objective
 - Projector still exists but not constrained
 - All other components unchanged
 
-**SPECTRA w/o All Enhancements (-All)**:
+**Seqorth w/o All Enhancements (-All)**:
 Remove all novel components, equivalent to a simple learned router:
 - No expression projector
 - No GRU (linear routing)
@@ -213,22 +213,22 @@ We fix seeds per run and log all hyperparameters to W&B; any nondeterminism sett
 Based on our method design, we hypothesize:
 
 **H1: Task Performance**
-SPECTRA will outperform Switch routing on most benchmarks due to better expert specialization.
+Seqorth will outperform Switch routing on most benchmarks due to better expert specialization.
 
 **H2: Expert Specialization**
-SPECTRA will show lower expert overlap and higher Gram matrix orthogonality compared to baselines.
+Seqorth will show lower expert overlap and higher Gram matrix orthogonality compared to baselines.
 
 **H3: Routing Stability**
-SPECTRA will show more consistent routing patterns over time due to speciality constraints.
+Seqorth will show more consistent routing patterns over time due to speciality constraints.
 
 **H4: Computational Efficiency**
-SPECTRA will have similar computational cost to Switch routing (both O(d·E) with small constant factors).
+Seqorth will have similar computational cost to Switch routing (both O(d·E) with small constant factors).
 
 **H5: Ablation Importance**
 Each component (Expression, GRU, Speciality Penalty, Orthogonal Constraint) will contribute positively, with cumulative effect.
 
 **H6: Model Scaling**
-Benefits of SPECTRA will be more pronounced with larger models (LLaMA-7B > GPT-2-Medium).
+Benefits of Seqorth will be more pronounced with larger models (LLaMA-7B > GPT-2-Medium).
 
 **H7: Specialized Domains**
 Performance gains will be larger on specialized domains (code, math, science) where expert specialization matters most.

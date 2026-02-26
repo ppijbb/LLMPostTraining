@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SPECTRA MoE SFT Training Script using Config File
+Seqorth MoE SFT Training Script using Config File
 """
 
 import os
@@ -36,7 +36,7 @@ import wandb
 # Expect PYTHONPATH to include repo root
 
 # Import custom modules  
-from models.spectra import upcycle_model_to_moe, SPECTRARouter, SPECTRABlock
+from models.seqorth import upcycle_model_to_moe, SeqorthRouter, SeqorthBlock
 from models.g3moe_model import G3MoEMLP
 from data.base_model_sft_dataset import get_dataset, create_multimodal_collate_fn
 from data.simple_sft_dataset import get_simple_sft_dataset, create_simple_collate_fn, smoltalk_dataset, orca_mini_dataset, validate_image_data
@@ -290,7 +290,7 @@ def eval_with_memory_optimization(trainer, original_eval_fn, eval_dataset=None, 
 
 
 def setup_model_and_tokenizer(model_config: Dict[str, Any]):
-    """Setup SPECTRA MoE model and tokenizer with detailed logging"""
+    """Setup Seqorth MoE model and tokenizer with detailed logging"""
     logger.info("🚀 Starting model and tokenizer setup...")
     
     # NOTE: Delay DeepSpeed env setup until AFTER model load to avoid HF ZeRO-3 init slow path
@@ -374,7 +374,7 @@ def setup_model_and_tokenizer(model_config: Dict[str, Any]):
         trust_remote_code=model_config["trust_remote_code"]
     )
     
-    # SPECTRA MoE configuration parameters from config file
+    # Seqorth MoE configuration parameters from config file
     g3moe_params = model_config.get("g3moe_params", {})
     
     # Extract model dimensions from config
@@ -391,7 +391,7 @@ def setup_model_and_tokenizer(model_config: Dict[str, Any]):
         num_hidden_layers = base_config.num_hidden_layers
         hidden_activation = getattr(base_config, 'hidden_act', 'silu')
     
-    print("SPECTRA MoE configuration:")
+    print("Seqorth MoE configuration:")
     print(f"  - Hidden size: {hidden_size}")
     print(f"  - Intermediate size: {intermediate_size}")
     print(f"  - Num hidden layers: {num_hidden_layers}")
@@ -407,7 +407,7 @@ def setup_model_and_tokenizer(model_config: Dict[str, Any]):
         device_map = "auto"
         print(f"Using auto device mapping for {torch.cuda.device_count()} GPUs")
     
-    # Load base model first, then upcycle to SPECTRA MoE
+    # Load base model first, then upcycle to Seqorth MoE
     logger.info("🤖 Loading base model...")
     logger.info(f"🤖 Model path: {model_config['model_name_or_path']}")
     logger.info(f"🤖 Device map: {device_map}")
@@ -438,7 +438,7 @@ def setup_model_and_tokenizer(model_config: Dict[str, Any]):
         total_params_before = sum(p.numel() for p in model.parameters())
         logger.info(f"  - Total parameters (before upcycling): {format_parameters(total_params_before)}")
         
-        # Prepare SPECTRA MoE configuration
+        # Prepare Seqorth MoE configuration
         moe_config = {
             "hidden_size": hidden_size,
             "intermediate_size": intermediate_size,
@@ -455,13 +455,13 @@ def setup_model_and_tokenizer(model_config: Dict[str, Any]):
             "hidden_activation": hidden_activation,
         }
         
-        logger.info("🔄 Upcycling model to SPECTRA MoE...")
+        logger.info("🔄 Upcycling model to Seqorth MoE...")
         logger.info(f"  - Num experts: {moe_config['num_experts']}")
         logger.info(f"  - Num experts per token: {moe_config['num_experts_per_tok']}")
         logger.info(f"  - Shared experts: {moe_config['n_shared_experts']}")
         logger.info(f"  - First k dense layers: {moe_config['first_k_dense_replace']}")
         
-        # Upcycle to SPECTRA MoE
+        # Upcycle to Seqorth MoE
         upcycle_start = time.time()
         model = upcycle_model_to_moe(
             model,
@@ -471,7 +471,7 @@ def setup_model_and_tokenizer(model_config: Dict[str, Any]):
             verbose=True
         )
         upcycle_time = time.time() - upcycle_start
-        logger.info(f"✅ SPECTRA MoE upcycling completed in {upcycle_time:.2f} seconds")
+        logger.info(f"✅ Seqorth MoE upcycling completed in {upcycle_time:.2f} seconds")
         
         # Log memory after upcycling
         memory_after = log_gpu_memory(logger, "AFTER_MOE_UPcycling")
@@ -493,7 +493,7 @@ def setup_model_and_tokenizer(model_config: Dict[str, Any]):
 
     # Setup LoRA if requested
     if model_config["use_lora"]:
-        # G3MoERouter/SPECTRARouter는 PEFT에서 지원하지 않으므로 target_modules에서 제외
+        # G3MoERouter/SeqorthRouter는 PEFT에서 지원하지 않으므로 target_modules에서 제외
         # Router는 PEFT 적용 후 수동으로 trainable로 설정
         lora_config = LoraConfig(
             r=model_config["lora_r"],
@@ -523,10 +523,10 @@ def setup_model_and_tokenizer(model_config: Dict[str, Any]):
         
         # Router 모듈을 찾아서 trainable로 설정 (PEFT 적용 후)
         from models.g3moe_model import G3MoERouter
-        from models.spectra import SPECTRARouter
+        from models.seqorth import SeqorthRouter
         router_count = 0
         for name, module in model.named_modules():
-            if isinstance(module, (G3MoERouter, SPECTRARouter)):
+            if isinstance(module, (G3MoERouter, SeqorthRouter)):
                 for p in module.parameters(recurse=True):
                     p.requires_grad_(True)
                 router_count += 1
@@ -997,11 +997,11 @@ if __name__ == "__main__":
     register_custom_optimizers()
     try:
         # Parse command line arguments
-        parser = argparse.ArgumentParser(description="SPECTRA MoE SFT Training with Config File")
+        parser = argparse.ArgumentParser(description="Seqorth MoE SFT Training with Config File")
         parser.add_argument(
             "--config", 
             type=str, 
-            default="config/sft/spectra_training_config.json",
+            default="config/sft/seqorth_training_config.json",
             help="Path to training configuration JSON file"
         )
         args = parser.parse_args()
@@ -1020,7 +1020,7 @@ if __name__ == "__main__":
             rank = int(os.getenv("RANK", "0"))
             if rank == 0:
                 wandb.init(
-                    project="SPECTRA-moe-sft",
+                    project="Seqorth-moe-sft",
                     name=training_config["run_name"],
                     config=config
                 )

@@ -1,4 +1,4 @@
-"""Checkpoint loading utilities for SPECTRA and baseline models."""
+"""Checkpoint loading utilities for Seqorth and baseline models."""
 
 import os
 import torch
@@ -11,7 +11,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def load_spectra_checkpoint(
+def load_seqorth_checkpoint(
     checkpoint_path: Union[str, Path],
     device: str = "cuda",
     torch_dtype: Optional[torch.dtype] = torch.bfloat16,
@@ -21,7 +21,7 @@ def load_spectra_checkpoint(
     **kwargs
 ) -> tuple[nn.Module, Any]:
     """
-    Load SPECTRA checkpoint with DeepSpeed Zero-3 support.
+    Load Seqorth checkpoint with DeepSpeed Zero-3 support.
     
     Args:
         checkpoint_path: Path to checkpoint directory
@@ -40,7 +40,7 @@ def load_spectra_checkpoint(
     if not checkpoint_path.exists():
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
     
-    logger.info(f"Loading SPECTRA checkpoint from {checkpoint_path}")
+    logger.info(f"Loading Seqorth checkpoint from {checkpoint_path}")
     
     # Check for DeepSpeed Zero-3 checkpoint
     zero_checkpoint_path = checkpoint_path / "zero_to_fp32.py"
@@ -91,7 +91,7 @@ def load_spectra_checkpoint(
             trust_remote_code=True,
             **kwargs
         )
-        logger.info(f"Loaded SPECTRA model successfully")
+        logger.info(f"Loaded Seqorth model successfully")
         logger.info(f"Model device: {next(model.parameters()).device}")
         logger.info(f"Model dtype: {next(model.parameters()).dtype}")
         

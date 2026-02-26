@@ -3,13 +3,13 @@ Test routing stabilization: ratio-based maxvio, soft barrier, intent dampening, 
 Verifies that CV/MaxVio KPI path runs and stored maxvio is ratio (not raw count).
 """
 import torch
-from models.spectra_model import SPECTRARouter
-from models.spectra_config import SPECTRATextConfig
+from models.seqorth_model import SeqorthRouter
+from models.seqorth_config import SeqorthTextConfig
 
 
 def test_router_forward_flush_and_ratio_maxvio():
-    """SPECTRARouter forward + flush_bias_updates; _maxvio_per_layer should be ratio-scale."""
-    config = SPECTRATextConfig(
+    """SeqorthRouter forward + flush_bias_updates; _maxvio_per_layer should be ratio-scale."""
+    config = SeqorthTextConfig(
         hidden_size=128,
         n_routed_experts=16,
         num_experts_per_tok=2,
@@ -19,7 +19,7 @@ def test_router_forward_flush_and_ratio_maxvio():
     config.intent_imbalance_damp = 0.85
     config.bias_update_lpf_high_imbalance = 0.75
 
-    router = SPECTRARouter(config)
+    router = SeqorthRouter(config)
     router.train()
 
     batch_size = 2
@@ -48,7 +48,7 @@ def test_router_forward_flush_and_ratio_maxvio():
 
 def test_router_soft_barrier_and_intent_damp_config():
     """New config params are read by router (getattr defaults)."""
-    config = SPECTRATextConfig(
+    config = SeqorthTextConfig(
         hidden_size=64,
         n_routed_experts=8,
         num_experts_per_tok=2,
@@ -59,7 +59,7 @@ def test_router_soft_barrier_and_intent_damp_config():
         intent_imbalance_damp=0.85,
         bias_update_lpf_high_imbalance=0.75,
     )
-    router = SPECTRARouter(config)
+    router = SeqorthRouter(config)
     assert getattr(router, "_soft_barrier_coef", None) == 0.15
 
 

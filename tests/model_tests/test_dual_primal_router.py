@@ -28,7 +28,7 @@ import os
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from models.spectra_config import SPECTRATextConfig
+from models.seqorth_config import SeqorthTextConfig
 
 
 class DualPrimalRouter(nn.Module):
@@ -36,7 +36,7 @@ class DualPrimalRouter(nn.Module):
     [Dual-Primal Global Router]
     Implements Online Sinkhorn via Dual Variable Optimization.
     """
-    def __init__(self, config: SPECTRATextConfig, use_momentum=False, **kwargs):
+    def __init__(self, config: SeqorthTextConfig, use_momentum=False, **kwargs):
         super().__init__()
         self.config = config
         self.num_experts = config.n_routed_experts
@@ -216,7 +216,7 @@ class DualPrimalRouter(nn.Module):
         else:
             ortho_loss = torch.tensor(0.0, device=x.device)
 
-        # Output formatting (matching SPECTRARouter interface)
+        # Output formatting (matching SeqorthRouter interface)
         zero = torch.tensor(0.0, device=x.device, requires_grad=True)
         return (
             multiplier, selected_experts, None, probs,
@@ -251,7 +251,7 @@ def verify_dual_primal_router(use_momentum=False, batch_size=128):
     print()
     
     # Create config
-    config = SPECTRATextConfig()
+    config = SeqorthTextConfig()
     config.n_routed_experts = EXPERTS
     config.hidden_size = DIM
     config.router_dim = 64
@@ -516,7 +516,7 @@ def compare_vanilla_vs_momentum():
     print()
     
     # Create configs
-    config = SPECTRATextConfig()
+    config = SeqorthTextConfig()
     config.n_routed_experts = EXPERTS
     config.hidden_size = DIM
     config.router_dim = 64

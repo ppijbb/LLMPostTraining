@@ -2,7 +2,7 @@
 """
 Checkpoint 모델 평가 스크립트
 
-학습된 checkpoint 모델을 불러와서 SPECTRA MoE 분석을 수행합니다.
+학습된 checkpoint 모델을 불러와서 Seqorth MoE 분석을 수행합니다.
 - Load balancing metrics
 - Expert specialization metrics
 - Routing quality metrics
@@ -27,7 +27,7 @@ import copy
 
 from models import G3MoEModel, G3MoETextModel, G3MoEConfig, G3MoEForCausalLM, G3MoEForConditionalGeneration, G3MoETextConfig
 from transformers.modeling_utils import VLMS
-from eval.spectra_analysis import SPECTRAAnalyzer
+from eval.seqorth_analysis import SeqorthAnalyzer
 
 
 # Register models
@@ -42,7 +42,7 @@ VLMS.append("g3moe")
 class RoutingInfoCollector:
     """모델 forward pass에서 routing 정보를 수집하는 hook"""
     
-    def __init__(self, analyzer: SPECTRAAnalyzer):
+    def __init__(self, analyzer: SeqorthAnalyzer):
         self.analyzer = analyzer
         self.hooks = []
         self.router_hooks = []
@@ -52,7 +52,7 @@ class RoutingInfoCollector:
     def register_hooks(self, model: nn.Module):
         """모델의 MoE 레이어와 Router에 hook 등록"""
         from models.g3moe_model import G3MoERouter, G3MoEGRINMoE
-        from models.spectra import SPECTRARouter, SPECTRABlock
+        from models.seqorth import SeqorthRouter, SeqorthBlock
         
         # Router의 forward hook (routing_logits, expression_logits 추출)
         def create_router_hook(layer_name):
@@ -133,7 +133,7 @@ class RoutingInfoCollector:
                 })
             return router_hook_fn
         
-        # MoE Block의 forward hook (G3MoEGRINMoE와 SPECTRABlock 모두 지원)
+        # MoE Block의 forward hook (G3MoEGRINMoE와 SeqorthBlock 모두 지원)
         def create_moe_hook(layer_name):
             def moe_hook_fn(module, input, output):
                 # G3MoEGRINMoE: output = (final_hidden_states, (routing_weights, hn, speciality_loss, cosine_similarities, expression_loss))
@@ -194,7 +194,7 @@ class RoutingInfoCollector:
                             })
                             return
                 
-                # SPECTRABlock: _last_routing_info 사용
+                # SeqorthBlock: _last_routing_info 사용
                 if hasattr(module, '_last_routing_info'):
                     routing_info = module._last_routing_info
                     if routing_info is not None and len(routing_info) >= 6:
@@ -231,15 +231,15 @@ class RoutingInfoCollector:
         moe_count = 0
         
         for name, module in model.named_modules():
-            # Router hook (G3MoERouter 또는 SPECTRARouter)
-            if isinstance(module, (G3MoERouter, SPECTRARouter)) or (hasattr(module, 'load_balancer') and hasattr(module, 'expression_projector')):
+            # Router hook (G3MoERouter 또는 SeqorthRouter)
+            if isinstance(module, (G3MoERouter, SeqorthRouter)) or (hasattr(module, 'load_balancer') and hasattr(module, 'expression_projector')):
                 hook = module.register_forward_hook(create_router_hook(name))
                 self.router_hooks.append(hook)
                 router_count += 1
                 print(f"Registered router hook: {name}")
             
-            # MoE Block hook (G3MoEGRINMoE 또는 SPECTRABlock)
-            if isinstance(module, (G3MoEGRINMoE, SPECTRABlock)) or hasattr(module, '_last_routing_info'):
+            # MoE Block hook (G3MoEGRINMoE 또는 SeqorthBlock)
+            if isinstance(module, (G3MoEGRINMoE, SeqorthBlock)) or hasattr(module, '_last_routing_info'):
                 hook = module.register_forward_hook(create_moe_hook(name))
                 self.hooks.append(hook)
                 moe_count += 1
@@ -715,7 +715,7 @@ def evaluate_model(
     model: nn.Module,
     tokenizer: Any,
     eval_data: List[Dict[str, torch.Tensor]],
-    analyzer: SPECTRAAnalyzer,
+    analyzer: SeqorthAnalyzer,
     device: str = "cuda",
     max_samples: Optional[int] = None,
 ) -> Dict[str, Any]:
@@ -762,7 +762,7 @@ def evaluate_model(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Evaluate checkpoint model with SPECTRA analysis")
+        description="Evaluate checkpoint model with Seqorth analysis")
     parser.add_argument(
         "--checkpoint_path",
         type=str,
@@ -838,7 +838,7 @@ def main():
     )
     
     # Analyzer 초기화
-    analyzer = SPECTRAAnalyzer(
+    analyzer = SeqorthAnalyzer(
         num_experts=moe_config.get('n_routed_experts', 8),
         router_dim=moe_config.get('router_dim', 128),
     )

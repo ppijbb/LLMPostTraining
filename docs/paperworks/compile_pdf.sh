@@ -1,12 +1,12 @@
 #!/bin/bash
-# Compile SPECTRA paper to PDF
+# Compile Seqorth paper to PDF
 # Usage: ./compile_pdf.sh
 
 set -e
 
 cd "$(dirname "$0")"
 
-echo "Compiling SPECTRA paper to PDF..."
+echo "Compiling Seqorth paper to PDF..."
 
 # Copy ICML style files to current directory if needed
 if [ ! -f "icml2026.sty" ]; then
@@ -18,15 +18,15 @@ fi
 if command -v pdflatex &> /dev/null; then
     echo "Using local pdflatex..."
     export TEXINPUTS=".:$(pwd)/icml2026:"
-    pdflatex -interaction=nonstopmode spectra_icml2026.tex || true
-    bibtex spectra_icml2026 || true
-    pdflatex -interaction=nonstopmode spectra_icml2026.tex || true
-    pdflatex -interaction=nonstopmode spectra_icml2026.tex || true
+    pdflatex -interaction=nonstopmode seqorth_icml2026.tex || true
+    bibtex seqorth_icml2026 || true
+    pdflatex -interaction=nonstopmode seqorth_icml2026.tex || true
+    pdflatex -interaction=nonstopmode seqorth_icml2026.tex || true
     
-    if [ -f "spectra_icml2026.pdf" ]; then
+    if [ -f "seqorth_icml2026.pdf" ]; then
         echo ""
-        echo "✓ Success! PDF generated: spectra_icml2026.pdf"
-        echo "  File size: $(du -h spectra_icml2026.pdf | cut -f1)"
+        echo "✓ Success! PDF generated: seqorth_icml2026.pdf"
+        echo "  File size: $(du -h seqorth_icml2026.pdf | cut -f1)"
         exit 0
     fi
 fi
@@ -52,16 +52,16 @@ if command -v docker &> /dev/null; then
             texlive/texlive:latest \
             bash -c "
                 export TEXINPUTS='.:/workspace/icml2026:'
-                pdflatex -interaction=nonstopmode spectra_icml2026.tex || true
-                bibtex spectra_icml2026 || true
-                pdflatex -interaction=nonstopmode spectra_icml2026.tex || true
-                pdflatex -interaction=nonstopmode spectra_icml2026.tex || true
+                pdflatex -interaction=nonstopmode seqorth_icml2026.tex || true
+                bibtex seqorth_icml2026 || true
+                pdflatex -interaction=nonstopmode seqorth_icml2026.tex || true
+                pdflatex -interaction=nonstopmode seqorth_icml2026.tex || true
             "
         
-        if [ -f "spectra_icml2026.pdf" ]; then
+        if [ -f "seqorth_icml2026.pdf" ]; then
             echo ""
-            echo "✓ Success! PDF generated: spectra_icml2026.pdf"
-            echo "  File size: $(du -h spectra_icml2026.pdf | cut -f1)"
+            echo "✓ Success! PDF generated: seqorth_icml2026.pdf"
+            echo "  File size: $(du -h seqorth_icml2026.pdf | cut -f1)"
             exit 0
         fi
     fi
@@ -76,21 +76,21 @@ echo ""
 echo "Option 1: Install LaTeX locally"
 echo "  Ubuntu/Debian: sudo apt-get install texlive-full"
 echo "  macOS: brew install --cask mactex"
-echo "  Then run: pdflatex spectra_icml2026.tex"
+echo "  Then run: pdflatex seqorth_icml2026.tex"
 echo ""
 echo "Option 2: Use Docker with sudo"
 echo "  sudo ./compile_pdf.sh"
 echo ""
 echo "Option 3: Use online LaTeX compiler"
-echo "  - Upload spectra_icml2026.tex and spectra_references.bib to Overleaf.com"
+echo "  - Upload seqorth_icml2026.tex and seqorth_references.bib to Overleaf.com"
 echo "  - Upload icml2026/ folder as well"
 echo "  - Compile online"
 echo ""
 echo "Option 4: Manual compilation (if LaTeX is installed)"
 echo "  export TEXINPUTS='.:$(pwd)/icml2026:'"
-echo "  pdflatex spectra_icml2026.tex"
-echo "  bibtex spectra_icml2026"
-echo "  pdflatex spectra_icml2026.tex"
-echo "  pdflatex spectra_icml2026.tex"
+echo "  pdflatex seqorth_icml2026.tex"
+echo "  bibtex seqorth_icml2026"
+echo "  pdflatex seqorth_icml2026.tex"
+echo "  pdflatex seqorth_icml2026.tex"
 echo ""
 exit 1

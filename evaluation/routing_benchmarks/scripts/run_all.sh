@@ -1,5 +1,5 @@
 #!/bin/bash
-# Convenience wrapper for running the full SPECTRA evaluation pipeline
+# Convenience wrapper for running the full Seqorth evaluation pipeline
 
 set -e
 
@@ -8,7 +8,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/../../.." && pwd )"
 
 echo "=================================="
-echo "SPECTRA 7-Day Evaluation Pipeline"
+echo "Seqorth 7-Day Evaluation Pipeline"
 echo "=================================="
 echo ""
 
@@ -45,8 +45,8 @@ errors = []
 
 # Check checkpoint path
 checkpoint = config.get('model', {}).get('checkpoint_path')
-if not checkpoint or checkpoint == "/path/to/spectra/checkpoint":
-    errors.append("  - model.checkpoint_path must be set to your SPECTRA checkpoint")
+if not checkpoint or checkpoint == "/path/to/seqorth/checkpoint":
+    errors.append("  - model.checkpoint_path must be set to your Seqorth checkpoint")
 
 # Check WandB run_id
 run_id = config.get('wandb', {}).get('run_id')

@@ -10,7 +10,7 @@ from transformers import LlamaConfig, LlamaForCausalLM, AutoConfig, AutoModelFor
 import sys
 sys.path.append("/home/conan/workspace/llm_training")
 
-from models.spectra_model import SPECTRAForCausalLM, SPECTRAConfig, SPECTRAMoE
+from models.seqorth_model import SeqorthForCausalLM, SeqorthConfig, SeqorthMoE
 
 class TestUpcycling(unittest.TestCase):
     def setUp(self):
@@ -35,41 +35,41 @@ class TestUpcycling(unittest.TestCase):
         model.save_pretrained(save_path)
         print(f"Saved dummy Llama model to {save_path}")
 
-        # 2. Define SPECTRA config for upcycling
-        spectra_config = SPECTRAConfig()
-        spectra_config.text_config.n_routed_experts = 4
-        spectra_config.text_config.num_experts_per_tok = 2
+        # 2. Define Seqorth config for upcycling
+        seqorth_config = SeqorthConfig()
+        seqorth_config.text_config.n_routed_experts = 4
+        seqorth_config.text_config.num_experts_per_tok = 2
         # Ensure compatible dimensions
-        spectra_config.text_config.hidden_size = config.hidden_size
-        spectra_config.text_config.intermediate_size = config.intermediate_size
-        spectra_config.text_config.num_hidden_layers = config.num_hidden_layers
+        seqorth_config.text_config.hidden_size = config.hidden_size
+        seqorth_config.text_config.intermediate_size = config.intermediate_size
+        seqorth_config.text_config.num_hidden_layers = config.num_hidden_layers
 
-        # 3. Load with SPECTRAForCausalLM + force_upcycle=True
-        print("Loading with SPECTRAForCausalLM...")
-        spectra_model = SPECTRAForCausalLM.from_pretrained(
+        # 3. Load with SeqorthForCausalLM + force_upcycle=True
+        print("Loading with SeqorthForCausalLM...")
+        seqorth_model = SeqorthForCausalLM.from_pretrained(
             save_path,
-            config=spectra_config,
+            config=seqorth_config,
             force_upcycle=True,
             local_files_only=True
         )
 
         # 4. Verify Upcycling
         print("Verifying layers...")
-        if hasattr(spectra_model, 'language_model'):
-             layers = spectra_model.language_model.layers
-        elif hasattr(spectra_model, 'model'):
-             layers = spectra_model.model.layers
+        if hasattr(seqorth_model, 'language_model'):
+             layers = seqorth_model.language_model.layers
+        elif hasattr(seqorth_model, 'model'):
+             layers = seqorth_model.model.layers
         else:
-             layers = spectra_model.layers
+             layers = seqorth_model.layers
         self.assertTrue(len(layers) > 0)
         
         # Check first layer
         first_layer = layers[0]
         self.assertTrue(hasattr(first_layer, 'mlp'), "First layer should have 'mlp' attribute")
         
-        # Check if MLP was converted to SPECTRAMoE
-        self.assertIsInstance(first_layer.mlp, SPECTRAMoE, "MLP should be converted to SPECTRAMoE")
-        print("✅ Llama upcycling successful: MLP is now SPECTRAMoE")
+        # Check if MLP was converted to SeqorthMoE
+        self.assertIsInstance(first_layer.mlp, SeqorthMoE, "MLP should be converted to SeqorthMoE")
+        print("✅ Llama upcycling successful: MLP is now SeqorthMoE")
 
     def test_gemma_structure_simulation(self):
         print("\n=== Testing Gemma Structure Simulation ===")

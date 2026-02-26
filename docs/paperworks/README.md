@@ -1,4 +1,4 @@
-# SPECTRA: Sinkhorn Projected Experts for Consistent TRAjectory Routing for Mixture-of-Experts
+# Seqorth: Sinkhorn Projected Experts for Consistent TRAjectory Routing for Mixture-of-Experts
 
 논문 초안 작업 디렉토리
 
@@ -8,7 +8,7 @@
 1. **01_abstract.txt** - 초록 및 주요 기여
 2. **02_introduction.txt** - 서론 및 연구 동기
 3. **03_related_work.txt** - 관련 연구
-4. **04_method.txt** - SPECTRA 방법론 상세 설명
+4. **04_method.txt** - Seqorth 방법론 상세 설명
 5. **05_experiments.txt** - 실험 설정 및 평가 방법
 6. **06_results.txt** - 실험 결과 및 분석
 7. **07_discussion.txt** - 논의 및 한계점
@@ -43,7 +43,7 @@ OSR (Orthogonal Sinkhorn Routing)과 Gram matrix 기반 직교성 제약을 통�
 
 ## 🔬 연구 방법론
 
-### SPECTRA 구성 요소
+### Seqorth 구성 요소
 
 ```
 ┌─────────────────────────────────────┐
@@ -140,11 +140,11 @@ w = topk(Q, k)  # From Sinkhorn output
 - Dense MLP (upper bound)
 
 ### Ablation Variants
-- SPECTRA w/o Expression
-- SPECTRA w/o GRU (Sequential Router)
-- SPECTRA w/o OSR (Repulsive Cost)
-- SPECTRA w/o Repulsion (λ=0)
-- SPECTRA w/o Orthogonal Constraint
+- Seqorth w/o Expression
+- Seqorth w/o GRU (Sequential Router)
+- Seqorth w/o OSR (Repulsive Cost)
+- Seqorth w/o Repulsion (λ=0)
+- Seqorth w/o Orthogonal Constraint
 
 ---
 
@@ -154,8 +154,8 @@ w = topk(Q, k)  # From Sinkhorn output
 ```
 models/
 ├── g3moe_model.py          # 핵심 G3MoE 구현
-├── spectra.py         # SPECTRA 라우팅 (모듈화)
-├── spectra_ablation.py    # Ablation 변형
+├── seqorth.py         # Seqorth 라우팅 (모듈화)
+├── seqorth_ablation.py    # Ablation 변형
 └── g3moe_config.py         # 설정 클래스
 
 eval/
@@ -179,7 +179,7 @@ loss:
   ortho_loss_coef: 0.01      # Optional orthogonal loss on projector weights
   osr_repulsion_weight: 0.5  # Repulsive cost function coefficient
 
-# Note: Unlike traditional MoE, SPECTRA does not require aux_loss_coef or
+# Note: Unlike traditional MoE, Seqorth does not require aux_loss_coef or
 # speciality_loss_coef. OSR structurally enforces load balancing and expert
 # separation without explicit loss terms.
   
@@ -253,12 +253,12 @@ optimizer:
 
 ### 3문장 요약
 > 기존 MoE 라우팅은 expert collapse와 전문화 부족 문제로 어려움을 겪는다.
-> SPECTRA는 OSR (Orthogonal Sinkhorn Routing)과 Gram matrix를 활용한 직교성 제약, 그리고 GRU 기반 sequential routing을 결합하여 이 문제를 해결한다. OSR은 학습 파라미터 없이 repulsive cost function을 통해 수학적으로 expert 분리를 보장한다.
+> Seqorth는 OSR (Orthogonal Sinkhorn Routing)과 Gram matrix를 활용한 직교성 제약, 그리고 GRU 기반 sequential routing을 결합하여 이 문제를 해결한다. OSR은 학습 파라미터 없이 repulsive cost function을 통해 수학적으로 expert 분리를 보장한다.
 > 종합적인 ablation study를 통해 각 컴포넌트가 성능에 기여함을 검증하고, 특히 전문 도메인에서 큰 성능 향상을 달성했다.
 
 ### 엘리베이터 피치 (30초)
 > "MoE 모델의 expert들이 비슷한 기능을 학습하거나 일부만 사용되는 문제가 있습니다.
-> 저희는 OSR (Orthogonal Sinkhorn Routing)과 Gram matrix를 사용해 expert들이 직교하도록 강제하고 최적 부하 분산을 달성하는 SPECTRA를 제안합니다. OSR은 학습 파라미터 없이 repulsive cost function을 통해 수학적으로 expert 분리를 보장합니다.
+> 저희는 OSR (Orthogonal Sinkhorn Routing)과 Gram matrix를 사용해 expert들이 직교하도록 강제하고 최적 부하 분산을 달성하는 Seqorth를 제안합니다. OSR은 학습 파라미터 없이 repulsive cost function을 통해 수학적으로 expert 분리를 보장합니다.
 > 이를 통해 각 expert가 코드, 수학, 과학 등 명확한 도메인을 전문화하도록 유도하고,
 > Switch Transformer 대비 X%의 성능 향상을 달성했습니다.
 > 더불어 모든 HuggingFace 모델에 적용 가능한 모듈화된 구현을 제공합니다."
@@ -301,7 +301,7 @@ optimizer:
 - [ ] 코드 디버깅 및 검증
 
 ### 본 실험
-- [ ] GPT-2-Medium 학습 (Switch, SPECTRA, Ablations)
+- [ ] GPT-2-Medium 학습 (Switch, Seqorth, Ablations)
 - [ ] LLaMA-2-7B 학습
 - [ ] Mixtral-8x7B router 교체
 - [ ] 전체 벤치마크 평가
@@ -331,11 +331,11 @@ optimizer:
 | Model | MMLU | HellaSwag | HumanEval | GSM8K | Avg |
 |-------|------|-----------|-----------|-------|-----|
 | Switch Top-2 | XX.X | XX.X | XX.X | XX.X | XX.X |
-| **SPECTRA** | **XX.X** | **XX.X** | **XX.X** | **XX.X** | **XX.X** |
+| **Seqorth** | **XX.X** | **XX.X** | **XX.X** | **XX.X** | **XX.X** |
 | Improvement | +X.X% | +X.X% | +X.X% | +X.X% | +X.X% |
 
 ### Expert Specialization
-| Metric | Switch | SPECTRA | Improvement |
+| Metric | Switch | Seqorth | Improvement |
 |--------|--------|----------|-------------|
 | Expert Entropy | X.XX | X.XX | +X.X% |
 | Expert Overlap | XX% | XX% | -XX% |

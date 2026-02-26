@@ -200,7 +200,7 @@ def generate_ablation_comparison(results: Dict[str, Any], output_path: Path):
     
     # Extract ablation results
     benchmarks = results.get("benchmarks", {})
-    ablation_variants = [v for v in benchmarks.keys() if "SPECTRA" in v]
+    ablation_variants = [v for v in benchmarks.keys() if "Seqorth" in v]
     
     # Use a common metric (e.g., MMLU)
     for variant in ablation_variants:

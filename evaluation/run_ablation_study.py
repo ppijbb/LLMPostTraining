@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Ablation Study Automation for SPECTRA MoE
+Ablation Study Automation for Seqorth MoE
 
 Runs ablation experiments by training and evaluating different variants:
-- Full SPECTRA
+- Full Seqorth
 - -Expression
 - -GRU
 - -SpecialityPenalty
@@ -21,8 +21,8 @@ from typing import Dict, List, Any
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.spectra_ablation import create_ablation_router
-from models.spectra import upcycle_model_to_moe, extract_config_info
+from models.seqorth_ablation import create_ablation_router
+from models.seqorth import upcycle_model_to_moe, extract_config_info
 from models.standard_moe_upcycle import upcycle_to_switch_moe
 
 
@@ -59,16 +59,16 @@ def create_ablation_model(
             verbose=verbose,
         )
     else:
-        # Use SPECTRA with ablation router
+        # Use Seqorth with ablation router
         # Modify upcycle_model_to_moe to accept custom router
         # For now, we'll create a modified version
-        from models.spectra import (
+        from models.seqorth import (
             find_layers_in_model,
             find_mlp_in_layer,
             is_already_moe,
             copy_mlp_weights_to_expert,
         )
-        from models.spectra_ablation import create_ablation_router, create_ablation_moe_block
+        from models.seqorth_ablation import create_ablation_router, create_ablation_moe_block
         from models.g3moe_model import G3MoEMLP
         
         cfg = extract_config_info(moe_config)
@@ -153,7 +153,7 @@ def create_ablation_model(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run Ablation Study for SPECTRA MoE")
+    parser = argparse.ArgumentParser(description="Run Ablation Study for Seqorth MoE")
     parser.add_argument(
         "--base_model",
         type=str,

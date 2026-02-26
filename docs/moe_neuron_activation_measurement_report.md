@@ -109,7 +109,7 @@ layer_metrics.update({
 })
 ```
 
-#### 4.2 SPECTRA 분석기 구현 (`eval/spectra_analysis.py`)
+#### 4.2 Seqorth 분석기 구현 (`eval/seqorth_analysis.py`)
 
 ```python
 # Expert별 weighted activation count
@@ -244,7 +244,7 @@ class NeuronActivationTracker:
 #### 9.1 현재 구현의 강점
 - Expert 레벨 활성화 추적이 잘 구현되어 있음
 - Callback 기반 모니터링으로 실시간 추적 가능
-- SPECTRA 분석기와 통합된 메트릭 수집
+- Seqorth 분석기와 통합된 메트릭 수집
 
 #### 9.2 개선 필요 사항
 1. **Neuron-level Activation Tracking 추가**

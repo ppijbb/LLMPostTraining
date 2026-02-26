@@ -16,22 +16,22 @@ import traceback
 sys.path.insert(0, '/home/conan/workspace/llm_training')
 
 # 필요한 모듈 임포트
-from models.spectra_model import SPECTRAForCausalLM, SPECTRAForConditionalGeneration, SPECTRAModel, SPECTRATextModel, SPECTRAConfig, SPECTRATextConfig
+from models.seqorth_model import SeqorthForCausalLM, SeqorthForConditionalGeneration, SeqorthModel, SeqorthTextModel, SeqorthConfig, SeqorthTextConfig
 from transformers import AutoTokenizer, AutoConfig, AutoModel, AutoModelForCausalLM
 from transformers.modeling_utils import VLMS
 
 try:
-    # AutoConfig.register("spectra", SPECTRAConfig)
-    AutoConfig.register("spectra", SPECTRAConfig)
-    AutoConfig.register("spectra_text", SPECTRATextConfig)
-    AutoModel.register(SPECTRAConfig, SPECTRAModel)
-    AutoModel.register(SPECTRATextConfig, SPECTRATextModel)
-    AutoModelForCausalLM.register(SPECTRAConfig, SPECTRAForConditionalGeneration)
-    VLMS.append("spectra")
+    # AutoConfig.register("seqorth", SeqorthConfig)
+    AutoConfig.register("seqorth", SeqorthConfig)
+    AutoConfig.register("seqorth_text", SeqorthTextConfig)
+    AutoModel.register(SeqorthConfig, SeqorthModel)
+    AutoModel.register(SeqorthTextConfig, SeqorthTextModel)
+    AutoModelForCausalLM.register(SeqorthConfig, SeqorthForConditionalGeneration)
+    VLMS.append("seqorth")
 except Exception as e:
     traceback.format_exc()
-    print(f"Failed to register SPECTRA model: {e}")
-    print("SPECTRA cannot train without registering model... exiting...")
+    print(f"Failed to register Seqorth model: {e}")
+    print("Seqorth cannot train without registering model... exiting...")
     raise e
 
 def create_simple_causal_mask(
@@ -91,7 +91,7 @@ def create_simple_causal_mask(
 
 
 def debug_forward_with_nan_detection(
-    model: SPECTRAForCausalLM,
+    model: SeqorthForCausalLM,
     input_ids: torch.Tensor,
     attention_mask: Optional[torch.Tensor] = None,
     max_layers_to_check: Optional[int] = None,
@@ -101,7 +101,7 @@ def debug_forward_with_nan_detection(
     모델의 forward 패스를 디버깅하여 NaN이 발생하는 레이어를 찾습니다.
 
     Args:
-        model: 디버깅할 SPECTRA 모델
+        model: 디버깅할 Seqorth 모델
         input_ids: 입력 토큰 ID
         attention_mask: 어텐션 마스크
         max_layers_to_check: 디버깅할 최대 레이어 수 (None이면 모든 레이어)
@@ -396,7 +396,7 @@ def create_debug_model_and_inputs(
     sequence_length: int = 8,  # 16 -> 8으로 더 감소
     batch_size: int = 1,
     device: str = "cpu"  # CUDA 메모리 캐시 문제로 인해 CPU로 강제 설정
-) -> Tuple[SPECTRAForCausalLM, torch.Tensor, torch.Tensor]:
+) -> Tuple[SeqorthForCausalLM, torch.Tensor, torch.Tensor]:
     """
     디버깅용 모델과 입력 데이터를 생성합니다.
 
@@ -415,16 +415,16 @@ def create_debug_model_and_inputs(
 
     # 간단한 구성 생성
     base_config = AutoConfig.from_pretrained(model_name)
-    config = SPECTRAConfig(
-        text_config=SPECTRATextConfig(
+    config = SeqorthConfig(
+        text_config=SeqorthTextConfig(
             **base_config.text_config.to_dict()
         ),
         vision_config=base_config.vision_config
     )
     
     # 최소한의 구성으로 설정
-    config.model_type = "spectra"
-    config.text_config.model_type = "spectra_text"
+    config.model_type = "seqorth"
+    config.text_config.model_type = "seqorth_text"
     config.text_config.hidden_size = 64
     config.text_config.intermediate_size = 256
     config.text_config.num_hidden_layers = 2
@@ -438,7 +438,7 @@ def create_debug_model_and_inputs(
     config.text_config._attn_implementation = "eager"
     # 모델 생성 (CPU에서 실행)
     device = "cuda"
-    model = SPECTRAForCausalLM(config)
+    model = SeqorthForCausalLM(config)
     model = model.to(device)
     model.eval()
 

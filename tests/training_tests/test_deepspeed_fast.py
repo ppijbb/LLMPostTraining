@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Fast DeepSpeed Forward/Backward Test with Dummy Data
-Tests SPECTRA model with DeepSpeed ZeRO-3 without loading actual dataset.
+Tests Seqorth model with DeepSpeed ZeRO-3 without loading actual dataset.
 """
 
 import os
@@ -38,7 +38,7 @@ def patch_deepspeed_zero3_linear_bias_dtype() -> None:
         import deepspeed.runtime.zero.linear as ds_zero_linear
         from deepspeed.runtime.zero.linear import autocast_custom_fwd
         
-        if getattr(ds_zero_linear, "_spectra_bias_dtype_patch_applied", False):
+        if getattr(ds_zero_linear, "_seqorth_bias_dtype_patch_applied", False):
             return
 
         LinearFn = getattr(ds_zero_linear, "LinearFunctionForZeroStage3", None)
@@ -91,7 +91,7 @@ def patch_deepspeed_zero3_linear_bias_dtype() -> None:
                 return output
 
         LinearFn.forward = patched_forward
-        ds_zero_linear._spectra_bias_dtype_patch_applied = True
+        ds_zero_linear._seqorth_bias_dtype_patch_applied = True
         logger.info("✅ Patched DeepSpeed ZeRO-3 LinearFunctionForZeroStage3.forward (with @autocast_custom_fwd) to align dtypes")
     except Exception as e:
         logger.warning(f"⚠️ Failed to apply DeepSpeed ZeRO-3 linear bias dtype patch: {e}")
@@ -117,15 +117,15 @@ atexit.register(cleanup_grpc)
 # Apply DeepSpeed ZeRO-3 linear dtype patch at import time (all ranks)
 patch_deepspeed_zero3_linear_bias_dtype()
 
-# Add parent directory to path to import train_spectra
+# Add parent directory to path to import train_seqorth
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Import SPECTRA model
-from models.spectra_model import SPECTRAForConditionalGeneration, SPECTRAConfig
+# Import Seqorth model
+from models.seqorth_model import SeqorthForConditionalGeneration, SeqorthConfig
 from transformers import AutoConfig, AutoTokenizer
 
-# Import setup_model from train_spectra
-from training.spectra_sft.train_spectra import setup_model
+# Import setup_model from train_seqorth
+from training.seqorth_sft.train_seqorth import setup_model
 
 
 def setup_distributed():
@@ -256,8 +256,8 @@ def load_configs(config_path: str, deepspeed_config_path: str, batch_size: int =
         try:
             import yaml
             from pathlib import Path
-            project_root = Path(__file__).parent
-            accelerate_config_path = project_root / "spectra_sft" / "config" / "accelerate.yaml"
+            project_root = Path(__file__).resolve().parent.parent.parent
+            accelerate_config_path = project_root / "training" / "seqorth_sft" / "config" / "accelerate.yaml"
             if accelerate_config_path.exists():
                 with open(accelerate_config_path, 'r') as f:
                     accelerate_config = yaml.safe_load(f)
@@ -331,7 +331,7 @@ def create_dummy_data(config, model=None, batch_size=1, seq_len=128, num_images=
     
     # Fallback to config
     if vocab_size is None:
-        vocab_size = config["model_config"]["spectra_params"].get("vocab_size", 151936)
+        vocab_size = config["model_config"]["seqorth_params"].get("vocab_size", 151936)
         logger.info(f"Using vocab_size from config: {vocab_size}")
     else:
         logger.info(f"Using vocab_size from model config: {vocab_size}")
@@ -468,15 +468,15 @@ def create_dummy_data(config, model=None, batch_size=1, seq_len=128, num_images=
 
 
 def setup_model_fast(config_dict, ds_config_dict, device="cuda"):
-    """Setup model using train_spectra.py's setup_model function."""
+    """Setup model using train_seqorth.py's setup_model function."""
     model_config = config_dict["model_config"]
     training_config = config_dict.get("training_config", {})
     
-    # Set training_config as a module-level variable for train_spectra.py's setup_model
+    # Set training_config as a module-level variable for train_seqorth.py's setup_model
     # This is needed because setup_model references training_config internally (line 742, 767)
-    import training.spectra_sft.train_spectra as train_spectra_module
+    import training.seqorth_sft.train_seqorth as train_seqorth_module
     
-    # Create a mock training_config if not provided, with defaults matching train_spectra.py usage
+    # Create a mock training_config if not provided, with defaults matching train_seqorth.py usage
     if not training_config:
         training_config = {
             "gradient_checkpointing": False,
@@ -484,10 +484,10 @@ def setup_model_fast(config_dict, ds_config_dict, device="cuda"):
         }
     
     # Set as module attribute so setup_model can access it
-    train_spectra_module.training_config = training_config
+    train_seqorth_module.training_config = training_config
     
-    # Use train_spectra.py's setup_model function
-    logger.info("Using train_spectra.py's setup_model function...")
+    # Use train_seqorth.py's setup_model function
+    logger.info("Using train_seqorth.py's setup_model function...")
     setup_result = setup_model(model_config)
     
     # setup_model returns (model, modules_to_save_list)
@@ -731,7 +731,7 @@ def main():
     """Main test function."""
     import argparse
     
-    # Parse command line arguments (same as train_spectra.py)
+    # Parse command line arguments (same as train_seqorth.py)
     parser = argparse.ArgumentParser(description="Fast DeepSpeed Forward/Backward Test")
     # DeepSpeed launcher injects --local_rank; accept it for compatibility.
     parser.add_argument(
@@ -743,13 +743,13 @@ def main():
     parser.add_argument(
         "--config",
         type=str,
-        default="spectra_sft/config/spectra_qwen_config.json",
+        default="training/seqorth_sft/config/seqorth_qwen_config.json",
         help="Path to training configuration JSON file"
     )
     args = parser.parse_args()
     
-    # Paths
-    project_root = Path(__file__).parent
+    # Paths (repo root = tests/training_tests -> tests -> repo root)
+    project_root = Path(__file__).resolve().parent.parent.parent
     config_path = Path(args.config) if not Path(args.config).is_absolute() else Path(args.config)
     if not config_path.is_absolute():
         config_path = project_root / config_path
@@ -771,7 +771,7 @@ def main():
             deepspeed_config_path = project_root / deepspeed_config_path
     else:
         # Default fallback
-        deepspeed_config_path = project_root / "spectra_sft" / "config" / "deepspeed_auto.json"
+        deepspeed_config_path = project_root / "training" / "seqorth_sft" / "config" / "deepspeed_auto.json"
     
     if not config_path.exists():
         logger.error(f"Config file not found: {config_path}")
@@ -799,7 +799,7 @@ def main():
     tp_size = 1
     try:
         import yaml
-        accelerate_config_path = project_root / "spectra_sft" / "config" / "accelerate.yaml"
+        accelerate_config_path = project_root / "training" / "seqorth_sft" / "config" / "accelerate.yaml"
         if accelerate_config_path.exists():
             with open(accelerate_config_path, 'r') as f:
                 accelerate_config = yaml.safe_load(f)

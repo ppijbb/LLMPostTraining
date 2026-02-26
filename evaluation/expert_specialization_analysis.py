@@ -70,7 +70,7 @@ class ExpertSpecializationAnalyzer:
     ):
         """
         Args:
-            model: MoE 모델 (SPECTRA, Switch, 등)
+            model: MoE 모델 (Seqorth, Switch, 등)
             tokenizer: Tokenizer
             device: Device ('cuda' or 'cpu')
             domain_keywords: Domain별 키워드 (자동 domain labeling용)
@@ -198,7 +198,7 @@ class ExpertSpecializationAnalyzer:
     
     def _extract_routing_info(self, outputs: Any) -> Tuple[torch.Tensor, torch.Tensor]:
         """모델 outputs에서 routing 정보 추출"""
-        # SPECTRA 스타일
+        # Seqorth 스타일
         if hasattr(outputs, 'router_logits') and outputs.router_logits is not None:
             # router_logits: tuple of [batch*seq, num_experts]
             router_logits = outputs.router_logits

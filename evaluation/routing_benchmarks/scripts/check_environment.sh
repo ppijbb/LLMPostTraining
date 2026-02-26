@@ -1,9 +1,9 @@
 #!/bin/bash
-# Environment checker for SPECTRA evaluation pipeline
+# Environment checker for Seqorth evaluation pipeline
 # Verifies all dependencies and configurations are properly set up
 
 echo "=================================="
-echo "SPECTRA Evaluation Environment Check"
+echo "Seqorth Evaluation Environment Check"
 echo "=================================="
 echo ""
 
@@ -139,7 +139,7 @@ if [ -f "$CONFIG_DIR/evaluation_config.yaml" ]; then
     echo -e "${GREEN}✓${NC} evaluation_config.yaml found"
     
     # Check if it's been customized
-    if grep -q "/path/to/spectra/checkpoint" "$CONFIG_DIR/evaluation_config.yaml"; then
+    if grep -q "/path/to/seqorth/checkpoint" "$CONFIG_DIR/evaluation_config.yaml"; then
         echo -e "  ${YELLOW}⚠${NC} checkpoint_path needs to be updated"
         WARNINGS=$((WARNINGS+1))
     fi
@@ -181,7 +181,7 @@ echo "=================================="
 if [ $ERRORS -eq 0 ] && [ $WARNINGS -eq 0 ]; then
     echo -e "${GREEN}✓ All checks passed!${NC}"
     echo ""
-    echo "Your environment is ready for SPECTRA evaluation."
+    echo "Your environment is ready for Seqorth evaluation."
     echo ""
     echo "Next steps:"
     echo "  1. Update config/evaluation_config.yaml with your checkpoint path"

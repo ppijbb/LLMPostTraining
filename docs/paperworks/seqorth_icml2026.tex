@@ -1,0 +1,30 @@
+\subsection{Summary and Comparison}
+
+We compare Seqorth with representative MoE routing mechanisms, including both foundational methods and state-of-the-art approaches from 2024-2025.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+Method & Sequential Context & Orthogonality & Load Balancing & Complexity \\
+\midrule
+Switch~\cite{fedus2021switch} & $\times$ & None & Auxiliary Loss (Static) & $O(d \cdot E)$ \\
+Expert Choice~\cite{zhou2022expert} & $\times$ & None & Implicit & $O(d \cdot E)$ \\
+OMoE~\cite{omoe2025} & $\times$ & Auxiliary Loss & Auxiliary Loss & $O(d \cdot E)$ \\
+RoMA~\cite{roma2025} & $\times$ & Manifold Align & Auxiliary Loss & $O(d \cdot E)$ \\
+\textbf{Seqorth (Ours)} & \textbf{$\checkmark$} (GRU) & \textbf{Structural} (OSR) & \textbf{Optimal Transport} & \textbf{$O(d \cdot E + T \cdot N \cdot E)$} \\
+\bottomrule
+\end{tabular}
+\caption{Comparison of routing mechanisms. Seqorth uniquely combines sequential context, structural orthogonality via repulsive cost, and pure optimal transport (Sinkhorn) for balancing.}
+\label{tab:comparison}
+\end{table}
+
+\textbf{Key Differences:}
+\begin{enumerate}
+    \item \textbf{Structural Orthogonality:} Unlike OMoE/RoMA which rely on competing auxiliary losses, Seqorth enforces separation directly in the routing transport cost via repulsion.
+    \item \textbf{Context Awareness:} Seqorth is unique in using sequential state (GRU) to maintain routing consistency across the sequence.
+    \item \textbf{Parameter-free Balancing:} OSR achieves balance via Sinkhorn normalization without tuning complex load-balance loss coefficients.
+\end{enumerate}
+
+This combination of features allows Seqorth to overcome the limitations of prior work, leading to more robust, specialized, and balanced expert utilization, which we will demonstrate in the following sections.

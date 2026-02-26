@@ -3,7 +3,7 @@
 라우팅 메트릭 수집 로직
 
 벤치마크 실행 중 forward hook을 통해 라우팅 정보를 추출하고
-SPECTRAAnalyzer로 메트릭을 계산합니다.
+SeqorthAnalyzer로 메트릭을 계산합니다.
 
 양자화/압축 모델 지원:
 - AWQ (Activation-aware Weight Quantization): 가중치만 양자화하므로 forward hook과 
@@ -23,7 +23,7 @@ import os
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from eval.spectra_analysis import SPECTRAAnalyzer
+from eval.seqorth_analysis import SeqorthAnalyzer
 
 
 class BenchmarkRoutingCollector:
@@ -31,7 +31,7 @@ class BenchmarkRoutingCollector:
     벤치마크 실행 중 라우팅 메트릭을 수집하는 클래스
     
     Forward hook을 등록하여 MoE 레이어에서 라우팅 정보를 추출하고
-    SPECTRAAnalyzer로 메트릭을 계산합니다.
+    SeqorthAnalyzer로 메트릭을 계산합니다.
     """
     
     def __init__(self, num_experts: int, router_dim: int = 128, capacity_factor: float = 1.25):
@@ -39,8 +39,8 @@ class BenchmarkRoutingCollector:
         self.router_dim = router_dim
         self.capacity_factor = capacity_factor
         
-        # SPECTRAAnalyzer 인스턴스 (태스크별로 reset)
-        self.analyzer = SPECTRAAnalyzer(
+        # SeqorthAnalyzer 인스턴스 (태스크별로 reset)
+        self.analyzer = SeqorthAnalyzer(
             num_experts=num_experts,
             router_dim=router_dim,
             capacity_factor=capacity_factor
@@ -76,8 +76,8 @@ class BenchmarkRoutingCollector:
         moe_layers = []
         
         for name, module in model.named_modules():
-            # SPECTRA 모델: SPECTRAMoE 블록 찾기
-            if 'SPECTRAMoE' in type(module).__name__ or 'SPECTRABlock' in type(module).__name__:
+            # Seqorth 모델: SeqorthMoE 블록 찾기
+            if 'SeqorthMoE' in type(module).__name__ or 'SeqorthBlock' in type(module).__name__:
                 moe_layers.append((name, module))
             # 외부 모델: MoE 관련 키워드로 찾기
             elif any(keyword in name.lower() for keyword in ['moe', 'expert', 'router']):
@@ -120,7 +120,7 @@ class BenchmarkRoutingCollector:
         """
         routing_info = {}
         
-        # ===== SPECTRA 모델: Router에서 직접 추출 =====
+        # ===== Seqorth 모델: Router에서 직접 추출 =====
         router = getattr(module, 'router', None)
         if router is not None:
             # selected_experts 추출
@@ -143,7 +143,7 @@ class BenchmarkRoutingCollector:
             if hasattr(router, 'num_experts'):
                 routing_info['num_experts'] = router.num_experts
             
-            # routing_logits (SPECTRA의 경우)
+            # routing_logits (Seqorth의 경우)
             if hasattr(router, 'last_routing_logits') and router.last_routing_logits is not None:
                 routing_info['routing_logits'] = router.last_routing_logits
             
@@ -191,7 +191,7 @@ class BenchmarkRoutingCollector:
     
     def process_routing_data(self):
         """
-        수집된 라우팅 데이터를 SPECTRAAnalyzer로 처리하여 메트릭 계산
+        수집된 라우팅 데이터를 SeqorthAnalyzer로 처리하여 메트릭 계산
         
         Returns:
             Dict[str, Any]: 계산된 메트릭
@@ -202,7 +202,7 @@ class BenchmarkRoutingCollector:
         # 각 라우팅 step 처리
         for routing_info in self.routing_data_buffer:
             try:
-                # SPECTRAAnalyzer에 필요한 정보 추출
+                # SeqorthAnalyzer에 필요한 정보 추출
                 selected_experts = routing_info.get('selected_experts')
                 routing_weights = routing_info.get('routing_weights')
                 routing_logits = routing_info.get('routing_logits')
@@ -225,7 +225,7 @@ class BenchmarkRoutingCollector:
                     elif routing_weights.dim() > 2:
                         routing_weights = routing_weights.view(-1, routing_weights.shape[-1])
                 
-                # routing_logits 정규화 (SPECTRA의 경우)
+                # routing_logits 정규화 (Seqorth의 경우)
                 if routing_logits is None and expression_logits is not None:
                     # expression_logits를 routing_logits로 사용 (fallback)
                     routing_logits = expression_logits
@@ -267,7 +267,7 @@ class BenchmarkRoutingCollector:
                         # 이미 올바른 형태
                         pass
                 
-                # SPECTRAAnalyzer로 메트릭 계산
+                # SeqorthAnalyzer로 메트릭 계산
                 if selected_experts is not None and routing_weights is not None:
                     # 최소한의 정보가 있으면 분석 시도
                     if routing_logits is None:

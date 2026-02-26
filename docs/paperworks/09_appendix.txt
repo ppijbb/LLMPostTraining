@@ -223,7 +223,7 @@ C. EXTENDED RESULTS
 
 [TABLE C.1: MMLU Subcategory Performance]
 -------------------------------------------------------------------
-Subcategory          | Switch Top-2 | SPECTRA | Improvement
+Subcategory          | Switch Top-2 | Seqorth | Improvement
 ---------------------|--------------|----------|-------------
 Abstract Algebra     | XX.X         | XX.X     | +X.X%
 Anatomy              | XX.X         | XX.X     | +X.X%
@@ -247,7 +247,7 @@ Finding: Largest gains on STEM subjects (Math, Physics, Chemistry, CS) where exp
 
 [TABLE C.2: Performance at Different Training Stages]
 -------------------------------------------------------------------
-Training Step | Switch Top-2 | SPECTRA | Expert Entropy | Gram Ortho
+Training Step | Switch Top-2 | Seqorth | Expert Entropy | Gram Ortho
               | (WikiText)   | (WikiText)|               |
 --------------|--------------|----------|----------------|------------
 0 (Init)      | XX.XX        | XX.XX    | X.XX           | XX.X
@@ -259,7 +259,7 @@ Training Step | Switch Top-2 | SPECTRA | Expert Entropy | Gram Ortho
 --------------|--------------|----------|----------------|------------
 -------------------------------------------------------------------
 
-Finding: SPECTRA converges faster and to better final performance. Expert specialization stabilizes by ~50K steps.
+Finding: Seqorth converges faster and to better final performance. Expert specialization stabilizes by ~50K steps.
 
 
 **C.3 Expert-Wise Performance**
@@ -292,8 +292,8 @@ D. IMPLEMENTATION DETAILS
 ```
 models/
 ├── g3moe_model.py           # Core G3MoE implementation
-├── spectra.py          # SPECTRA routing (modular)
-├── spectra_ablation.py     # Ablation variants
+├── seqorth.py          # Seqorth routing (modular)
+├── seqorth_ablation.py     # Ablation variants
 └── g3moe_config.py          # Configuration classes
 
 eval/
@@ -305,7 +305,7 @@ sft/
 └── config/                  # Training configurations
 
 experiments/
-└── spectra_experiments/    # Experiment scripts
+└── seqorth_experiments/    # Experiment scripts
 ```
 
 **D.2 Training Configuration (YAML)**
@@ -320,7 +320,7 @@ model:
   first_k_dense_replace: 0
   
 routing:
-  type: "SPECTRA"
+  type: "Seqorth"
   balancing_strength: 0.01
   ema_alpha: 0.99
   router_jitter_noise: 0.01
@@ -332,7 +332,7 @@ loss:
   ortho_loss_coef: 0.01      # Optional orthogonal loss on projector weights
   osr_repulsion_weight: 0.5  # Repulsive cost function coefficient
 
-# Note: Unlike traditional MoE, SPECTRA does not require aux_loss_coef,
+# Note: Unlike traditional MoE, Seqorth does not require aux_loss_coef,
 # speciality_loss_coef, or router_z_loss_coef. OSR structurally enforces
 # load balancing and expert separation without explicit loss terms.
   
@@ -358,7 +358,7 @@ training:
 **D.3 Initialization Pseudo-code**
 
 ```python
-def initialize_spectra_router(hidden_size, num_experts, router_dim):
+def initialize_seqorth_router(hidden_size, num_experts, router_dim):
     # GRU for sequential routing
     gru = ManualGRUCell(
         input_size=hidden_size,
@@ -466,7 +466,7 @@ F. VISUALIZATION GALLERY
 - Points: Individual expert representations from different tokens
 - Colors: Expert ID (8 colors for 8 experts)
 
-Observation: SPECTRA experts form distinct, well-separated clusters. Switch experts overlap significantly.
+Observation: Seqorth experts form distinct, well-separated clusters. Switch experts overlap significantly.
 
 
 **F.2 Routing Heatmap**
@@ -476,7 +476,7 @@ Observation: SPECTRA experts form distinct, well-separated clusters. Switch expe
 - Y-axis: Expert ID (0-7)
 - Color: Routing weight (0=white, 1=dark)
 
-Observation: SPECTRA shows clear domain-specific patterns. Code section routes consistently to E0, math section to E1.
+Observation: Seqorth shows clear domain-specific patterns. Code section routes consistently to E0, math section to E1.
 
 
 **F.3 Training Loss Curves**
@@ -484,9 +484,9 @@ Observation: SPECTRA shows clear domain-specific patterns. Code section routes c
 [FIGURE F.3: Training and validation loss over steps]
 - X-axis: Training steps (0-100K)
 - Y-axis: Cross-entropy loss
-- Lines: Different methods (Switch Top-1, Switch Top-2, SPECTRA)
+- Lines: Different methods (Switch Top-1, Switch Top-2, Seqorth)
 
-Observation: SPECTRA converges faster and to lower final loss.
+Observation: Seqorth converges faster and to lower final loss.
 
 
 **F.4 Expert Usage Over Time**
@@ -496,7 +496,7 @@ Observation: SPECTRA converges faster and to lower final loss.
 - Y-axis: Percentage of tokens routed to each expert (0-100%)
 - Colors: Expert ID (stacked)
 
-Observation: SPECTRA achieves balanced usage quickly (~20K steps). Switch shows slow convergence and imbalance.
+Observation: Seqorth achieves balanced usage quickly (~20K steps). Switch shows slow convergence and imbalance.
 
 
 **F.5 Gram Matrix Visualization**
@@ -505,7 +505,7 @@ Observation: SPECTRA achieves balanced usage quickly (~20K steps). Switch shows 
 - Axes: Expert IDs (0-7 × 0-7)
 - Color: Inner product G_ij (-1=blue, 0=white, 1=red)
 
-SPECTRA: Near-diagonal matrix (orthogonal)
+Seqorth: Near-diagonal matrix (orthogonal)
 Switch: Off-diagonal values high (non-orthogonal)
 
 
@@ -571,7 +571,7 @@ Evaluation            | 1× A100 40GB   | 40GB   | ~12 hours
 
 [TABLE H.2: Resource Utilization]
 -------------------------------------------------------------------
-Metric               | Switch Top-2 | SPECTRA | Overhead
+Metric               | Switch Top-2 | Seqorth | Overhead
 ---------------------|--------------|----------|----------
 GPU Memory (Train)   | XX.X GB      | XX.X GB  | +X.X%
 GPU Memory (Infer)   | XX.X GB      | XX.X GB  | +X.X%

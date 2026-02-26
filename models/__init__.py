@@ -1,7 +1,7 @@
 """
-G3MoE / SPECTRA Models module
+G3MoE / Seqorth Models module
 
-Uses top-level modules for backward compatibility. Subpackages: models.spectra, models.moe.
+Uses top-level modules for backward compatibility. Subpackages: models.seqorth, models.moe.
 """
 import os
 import torch
@@ -20,14 +20,14 @@ from .g3moe_model import (
     G3MoEForConditionalGeneration,
     G3MoEModel,
 )
-from .spectra_config import SPECTRAConfig, SPECTRATextConfig
-from .spectra_model import (
-    SPECTRAPreTrainedModel,
-    SPECTRATextModel,
-    SPECTRAForCausalLM,
-    SPECTRAForConditionalGeneration,
-    SPECTRAModel,
-    SPECTRAExoskeletonMoEInjector,
+from .seqorth_config import SeqorthConfig, SeqorthTextConfig
+from .seqorth_model import (
+    SeqorthPreTrainedModel,
+    SeqorthTextModel,
+    SeqorthForCausalLM,
+    SeqorthForConditionalGeneration,
+    SeqorthModel,
+    SeqorthExoskeletonMoEInjector,
 )
 from .g2moe_config import *
 from .g2moe_model import *
@@ -40,12 +40,12 @@ __all__ = [
     "G3MoEForCausalLM",
     "G3MoEForConditionalGeneration",
     "G3MoEModel",
-    "SPECTRAConfig",
-    "SPECTRATextConfig",
-    "SPECTRAPreTrainedModel",
-    "SPECTRATextModel",
-    "SPECTRAForCausalLM",
-    "SPECTRAForConditionalGeneration",
-    "SPECTRAModel",
-    "SPECTRAExoskeletonMoEInjector",
+    "SeqorthConfig",
+    "SeqorthTextConfig",
+    "SeqorthPreTrainedModel",
+    "SeqorthTextModel",
+    "SeqorthForCausalLM",
+    "SeqorthForConditionalGeneration",
+    "SeqorthModel",
+    "SeqorthExoskeletonMoEInjector",
 ]

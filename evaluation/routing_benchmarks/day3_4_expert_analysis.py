@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-D+3~4: Expert Analysis - SPECTRA's Core Novelty
+D+3~4: Expert Analysis - Seqorth's Core Novelty
 
 Analyze and visualize expert specialization:
 1. Domain-specific expert usage heatmaps
@@ -22,7 +22,7 @@ from collections import defaultdict
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from eval.routing_benchmarks.utils import (
-    load_spectra_checkpoint,
+    load_seqorth_checkpoint,
     prepare_model_for_eval,
     MetricTracker,
     plot_expert_heatmap,
@@ -347,7 +347,7 @@ def main():
     checkpoint_path = args.checkpoint or config["model"]["checkpoint_path"]
     logger.info(f"Loading model from {checkpoint_path}")
     
-    model, tokenizer = load_spectra_checkpoint(
+    model, tokenizer = load_seqorth_checkpoint(
         checkpoint_path,
         device="cuda",
         torch_dtype=torch.bfloat16,
@@ -438,7 +438,7 @@ def main():
         texts = [item["text"] for item in dataset if item["text"].strip()][:trajectory_config["num_sequences"]]
         
         logger.info(f"Computing trajectory consistency for {len(texts)} sequences...")
-        spectra_consistency = compute_trajectory_consistency(
+        seqorth_consistency = compute_trajectory_consistency(
             model=model,
             tokenizer=tokenizer,
             texts=texts,
@@ -446,15 +446,15 @@ def main():
         )
         
         tracker.add_metric("day3_4", "trajectory_consistency", {
-            "mean": float(spectra_consistency.mean()),
-            "std": float(spectra_consistency.std()),
-            "scores": spectra_consistency.tolist()
+            "mean": float(seqorth_consistency.mean()),
+            "std": float(seqorth_consistency.std()),
+            "scores": seqorth_consistency.tolist()
         })
         
         # Plot
         logger.info("Generating trajectory consistency plot...")
         plot_trajectory_consistency(
-            spectra_consistency=spectra_consistency,
+            seqorth_consistency=seqorth_consistency,
             output_file=output_dir / "trajectory_consistency.png"
         )
     

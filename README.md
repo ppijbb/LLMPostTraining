@@ -54,12 +54,12 @@ echo "UUID=$UUID /mnt/disks/local-ssd ext4 discard,defaults,nofail 0 2" | sudo t
 python main.py
 ```
 
-### SPECTRA SFT
+### Seqorth SFT
 From repo root:
 ```bash
-PYTHONPATH=. bash training/spectra_sft/run_spectra.sh [config] [num_gpus]
+PYTHONPATH=. bash training/seqorth_sft/run_seqorth.sh [config] [num_gpus]
 ```
-Configs live under `config/spectra/` (e.g. `config/spectra/spectra_qwen_config.json`).
+Configs live under `config/seqorth/` (e.g. `config/seqorth/seqorth_qwen_config.json`).
 
 ### Supervised Fine-Tuning (SFT / G3MoE)
 ```bash
@@ -111,9 +111,9 @@ cd training/mora
 ```
 
 ## Features
-- **Training methods**: SFT (SPECTRA, G3MoE), RLHF (GRPO, TTC, DPO/SimPO), MoRA, distillation, Lightning
-- **Models**: SPECTRA MoE, G3MoE, MoRA, Qwen3 MoE fused; shared code under `core/` and `models/`
-- **Config**: Single `config/` tree for spectra, sft, rlhf, eval
+- **Training methods**: SFT (Seqorth, G3MoE), RLHF (GRPO, TTC, DPO/SimPO), MoRA, distillation, Lightning
+- **Models**: Seqorth MoE, G3MoE, MoRA, Qwen3 MoE fused; shared code under `core/` and `models/`
+- **Config**: Single `config/` tree for seqorth, sft, rlhf, eval
 - **Distributed**: DeepSpeed ZeRO-2/3, multi-GPU, NVMe offload
 - **Monitoring**: W&B, eval callbacks, routing benchmarks
 
@@ -133,11 +133,11 @@ export DISABLE_ZENFLOW=1
 ### Tips
 - Use ZeRO-2 + ZenFlow for best throughput; ZeRO-3 for largest models
 - Reduce `per_device_train_batch_size` or enable `gradient_checkpointing` if OOM
-- Configs under `config/spectra/`, `config/sft/` reference DeepSpeed JSONs in the same tree
+- Configs under `config/seqorth/`, `config/sft/` reference DeepSpeed JSONs in the same tree
 
 ## Dependencies
 - PyTorch 2.4+ (CUDA)
-- Transformers (with trust_remote_code for Qwen/SPECTRA)
+- Transformers (with trust_remote_code for Qwen/Seqorth)
 - DeepSpeed, Accelerate
 - Lightning AI (for `training/lightning_trainer`)
 - Hugging Face (datasets, tokenizers, etc.)

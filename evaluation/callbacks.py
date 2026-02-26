@@ -1061,7 +1061,7 @@ class SpecHornScheduler(TrainerCallback):
             # Find router in the model
             router = None
             for name, module in actual_model.named_modules():
-                if hasattr(module, '_is_spectra_router'):
+                if hasattr(module, '_is_seqorth_router'):
                     router = module
                     break
             

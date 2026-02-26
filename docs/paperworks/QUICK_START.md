@@ -7,12 +7,12 @@ https://www.overleaf.com → 무료 계정 생성
 
 ### 2. 프로젝트 업로드
 - "New Project" → "Upload Project"
-- `spectra_overleaf.tar.gz` 파일 업로드 (또는 아래 파일들 직접 업로드)
+- `seqorth_overleaf.tar.gz` 파일 업로드 (또는 아래 파일들 직접 업로드)
 
 **필요한 파일:**
 ```
-spectra_icml2026.tex          (메인 논문)
-spectra_references.bib        (참고문헌)
+seqorth_icml2026.tex          (메인 논문)
+seqorth_references.bib        (참고문헌)
 icml2026/                     (스타일 파일 폴더)
   ├── icml2026.sty
   ├── icml2026.bst
@@ -42,13 +42,13 @@ brew install --cask mactex
 ```bash
 cd /home/conan/workspace/llm_training/docs/paperworks
 export TEXINPUTS=".:$(pwd)/icml2026:"
-pdflatex spectra_icml2026.tex
-bibtex spectra_icml2026
-pdflatex spectra_icml2026.tex
-pdflatex spectra_icml2026.tex
+pdflatex seqorth_icml2026.tex
+bibtex seqorth_icml2026
+pdflatex seqorth_icml2026.tex
+pdflatex seqorth_icml2026.tex
 ```
 
-생성된 `spectra_icml2026.pdf` 파일을 확인하세요!
+생성된 `seqorth_icml2026.pdf` 파일을 확인하세요!
 
 ---
 
@@ -62,10 +62,10 @@ sudo docker run --rm \
     texlive/texlive:latest \
     bash -c "
         export TEXINPUTS='.:/workspace/icml2026:'
-        pdflatex -interaction=nonstopmode spectra_icml2026.tex
-        bibtex spectra_icml2026
-        pdflatex -interaction=nonstopmode spectra_icml2026.tex
-        pdflatex -interaction=nonstopmode spectra_icml2026.tex
+        pdflatex -interaction=nonstopmode seqorth_icml2026.tex
+        bibtex seqorth_icml2026
+        pdflatex -interaction=nonstopmode seqorth_icml2026.tex
+        pdflatex -interaction=nonstopmode seqorth_icml2026.tex
     "
 ```
 
@@ -82,7 +82,7 @@ sudo docker run --rm \
 
 **단계:**
 1. Overleaf.com 접속
-2. `spectra_overleaf.tar.gz` 업로드
+2. `seqorth_overleaf.tar.gz` 업로드
 3. "Recompile" 클릭
 4. PDF 다운로드
 

@@ -2,16 +2,16 @@
 DISCUSSION
 =================================================================
 
-We discuss the implications of our results, analyze why SPECTRA works, identify limitations, and outline future research directions.
+We discuss the implications of our results, analyze why Seqorth works, identify limitations, and outline future research directions.
 
 
 -------------------------------------------------------------------
-7.1 WHY DOES SPECTRA WORK?
+7.1 WHY DOES Seqorth WORK?
 -------------------------------------------------------------------
 
 **Orthogonality Encourages Functional Diversity**:
 
-The key insight of SPECTRA is that orthogonality in representation space translates to functional diversity in computation space. By enforcing orthogonal expert representations through Gram matrix constraints, we ensure experts cannot "hide" in similar regions of function space.
+The key insight of Seqorth is that orthogonality in representation space translates to functional diversity in computation space. By enforcing orthogonal expert representations through Gram matrix constraints, we ensure experts cannot "hide" in similar regions of function space.
 
 Mathematical Intuition:
 - Two functions f₁ and f₂ are orthogonal if ⟨f₁, f₂⟩ = 0
@@ -70,50 +70,50 @@ Empirical Evidence:
 
 **vs. Switch Transformer**:
 - Switch uses simple linear routing with load balancing loss
-- SPECTRA adds orthogonality constraints and sequential context
+- Seqorth adds orthogonality constraints and sequential context
 - Result: [X.X]% better performance, [XX]% less expert collapse
 
 **vs. Expert Choice Routing**:
 - Expert Choice reverses routing paradigm (experts select tokens)
-- SPECTRA maintains token-selects-expert but improves selection mechanism
+- Seqorth maintains token-selects-expert but improves selection mechanism
 - Result: Comparable load balance, better specialization, simpler implementation
 
 **vs. Hash Routing**:
 - Hash routing is deterministic and perfectly balanced
-- SPECTRA is learned and adaptive to data
+- Seqorth is learned and adaptive to data
 - Result: [XX]% better performance, showing importance of learned routing
 
 **vs. Diversity Regularization (Prior Work)**:
 - Prior work uses generic diversity losses (e.g., pairwise distance)
-- SPECTRA uses Gram matrix for mathematically principled orthogonality
+- Seqorth uses Gram matrix for mathematically principled orthogonality
 - Result: More effective specialization, faster convergence
 
 
 -------------------------------------------------------------------
-7.3 WHEN DOES SPECTRA HELP MOST?
+7.3 WHEN DOES Seqorth HELP MOST?
 -------------------------------------------------------------------
 
 **Specialized Domains** (Code, Math, Science):
-- SPECTRA shows [X]× larger improvements on specialized domains vs. general benchmarks
+- Seqorth shows [X]× larger improvements on specialized domains vs. general benchmarks
 - Explanation: These domains benefit from dedicated experts with deep specialization
-- Implication: SPECTRA is particularly valuable for multi-domain models
+- Implication: Seqorth is particularly valuable for multi-domain models
 
 **Larger Models**:
 - Benefits increase with model size: GPT-2 (+[X]%) < LLaMA-7B (+[Y]%) < Mixtral-8x7B (+[Z]%)
 - Explanation: Larger models have more capacity to develop specialized experts
-- Implication: SPECTRA will be increasingly important as models scale
+- Implication: Seqorth will be increasingly important as models scale
 
 **More Experts**:
 - Switch routing saturates around 8-16 experts due to collapse
-- SPECTRA scales effectively to 32+ experts
+- Seqorth scales effectively to 32+ experts
 - Explanation: Orthogonality constraints prevent collapse with many experts
-- Implication: SPECTRA enables using more experts efficiently
+- Implication: Seqorth enables using more experts efficiently
 
 **Longer Sequences**:
 - Sequential routing (GRU) benefits longer sequences more
 - Improvement: Short sequences (+[X]%) < Long sequences (+[Y]%)
 - Explanation: More context to exploit for routing decisions
-- Implication: SPECTRA will be valuable for long-context models
+- Implication: Seqorth will be valuable for long-context models
 
 
 -------------------------------------------------------------------
@@ -121,7 +121,7 @@ Empirical Evidence:
 -------------------------------------------------------------------
 
 **1. Computational Overhead**:
-While small ([X]%), SPECTRA does add overhead compared to Switch routing:
+While small ([X]%), Seqorth does add overhead compared to Switch routing:
 - GRU forward pass: O(d·E·D) per token
 - Expression projection: O(d·E·D) per token
 - Total overhead: ~[X]% latency increase
@@ -132,7 +132,7 @@ Mitigation: Optimizations like caching and precomputation reduce overhead to [X]
 
 
 **2. Hyperparameter Sensitivity**:
-SPECTRA introduces several loss coefficients (λ_aux, λ_ortho, λ_spec) that require tuning:
+Seqorth introduces several loss coefficients (λ_aux, λ_ortho, λ_spec) that require tuning:
 - Default values work well across models tested
 - However, optimal values may vary for different model sizes/domains
 - Grid search required for new settings
@@ -267,7 +267,7 @@ Decision: Top-2 is optimal for most use cases. Top-k can be adjusted based on ne
 -------------------------------------------------------------------
 
 **For Model Developers**:
-1. SPECTRA can upcycle existing dense models to MoE efficiently
+1. Seqorth can upcycle existing dense models to MoE efficiently
 2. Minimal code changes required (drop-in replacement for MLP layers)
 3. Works with any HuggingFace model architecture
 4. Can improve existing MoE models by replacing router only
@@ -313,7 +313,7 @@ Decision: Top-2 is optimal for most use cases. Top-k can be adjusted based on ne
 **1. Theoretical Foundations**:
 - Formal analysis of orthogonality-diversity connection
 - Sample complexity bounds for expert specialization
-- Convergence guarantees for SPECTRA training
+- Convergence guarantees for Seqorth training
 - Information-theoretic analysis of routing decisions
 
 **2. Architectural Extensions**:
@@ -347,10 +347,10 @@ Decision: Top-2 is optimal for most use cases. Top-k can be adjusted based on ne
 - Failure mode analysis and mitigation
 
 **7. Combination with Other Methods**:
-- SPECTRA + Expert Choice (hybrid routing)
-- SPECTRA + Soft MoE (weighted combinations)
-- SPECTRA + MoD (Mixture-of-Depths)
-- SPECTRA + MoA (Mixture-of-Attention)
+- Seqorth + Expert Choice (hybrid routing)
+- Seqorth + Soft MoE (weighted combinations)
+- Seqorth + MoD (Mixture-of-Depths)
+- Seqorth + MoA (Mixture-of-Attention)
 
 **8. Scaling Studies**:
 - Evaluation on 100B+ parameter models
@@ -389,9 +389,9 @@ Decision: Top-2 is optimal for most use cases. Top-k can be adjusted based on ne
 7.10 CONCLUSION OF DISCUSSION
 -------------------------------------------------------------------
 
-SPECTRA demonstrates that orthogonality constraints, when properly implemented, can significantly improve MoE routing. The combination of Gram matrix speciality penalties, sequential context, and expression projection addresses long-standing challenges in expert collapse and lack of specialization.
+Seqorth demonstrates that orthogonality constraints, when properly implemented, can significantly improve MoE routing. The combination of Gram matrix speciality penalties, sequential context, and expression projection addresses long-standing challenges in expert collapse and lack of specialization.
 
 Our results show consistent improvements across model sizes, domains, and evaluation metrics, with all components contributing meaningfully. While limitations exist (overhead, hyperparameters, theory), the practical benefits are substantial and statistically significant.
 
-The modular design and open-source implementation should facilitate future research building on these ideas. SPECTRA demonstrates potential for scaling MoE models effectively.
+The modular design and open-source implementation should facilitate future research building on these ideas. Seqorth demonstrates potential for scaling MoE models effectively.
 

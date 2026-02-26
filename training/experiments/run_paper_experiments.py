@@ -2,9 +2,9 @@
 """
 Master Experiment Orchestration Script
 
-Orchestrates all experiments for SPECTRA MoE paper:
+Orchestrates all experiments for Seqorth MoE paper:
 1. Baseline training (Dense, Standard MoE)
-2. SPECTRA training (full, ablations)
+2. Seqorth training (full, ablations)
 3. Benchmark evaluation on all models
 4. Efficiency measurement
 5. Expert specialization analysis
@@ -29,7 +29,7 @@ def run_training(
     config_path: str,
     output_dir: Path,
     variant_name: str,
-    use_SPECTRA: bool = True,
+    use_Seqorth: bool = True,
     ablation_type: str = "none",
 ) -> Path:
     """
@@ -50,7 +50,7 @@ def run_training(
         train_config = json.load(f)
     
     # Modify config for variant
-    if use_SPECTRA:
+    if use_Seqorth:
         if ablation_type != "none":
             train_config["ablation_type"] = ablation_type
     else:
@@ -202,7 +202,7 @@ def main():
         "--models",
         type=str,
         nargs="+",
-        default=["dense", "standard_moe", "SPECTRA"],
+        default=["dense", "standard_moe", "Seqorth"],
         help="Model variants to train",
     )
     parser.add_argument(
@@ -256,7 +256,7 @@ def main():
         variant_results = {}
         
         # Determine ablation variants
-        if model_variant == "SPECTRA":
+        if model_variant == "Seqorth":
             variants_to_test = args.ablations
         else:
             variants_to_test = ["none"]  # Only one variant for dense/standard_moe
@@ -277,7 +277,7 @@ def main():
                     config_path=args.training_config,
                     output_dir=output_dir,
                     variant_name=variant_name,
-                    use_SPECTRA=(model_variant == "SPECTRA"),
+                    use_Seqorth=(model_variant == "Seqorth"),
                     ablation_type=ablation,
                 )
                 variant_results[variant_name]["checkpoint_dir"] = str(checkpoint_dir)

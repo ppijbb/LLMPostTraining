@@ -1,5 +1,5 @@
-class SPECTRARouter(nn.Module):
-    def __init__(self, config: SPECTRATextConfig, **kwargs):
+class SeqorthRouter(nn.Module):
+    def __init__(self, config: SeqorthTextConfig, **kwargs):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
@@ -31,7 +31,7 @@ class SPECTRARouter(nn.Module):
 
     def compute_orthogonality_loss(self):
         """
-        [SPECTRA Speciality] 전문가 벡터 간의 직교성을 강제하여 '유사한 전문가' 생성을 방지
+        [Seqorth Speciality] 전문가 벡터 간의 직교성을 강제하여 '유사한 전문가' 생성을 방지
         """
         # Weight Normalize
         w_norm = F.normalize(self.gate.weight, p=2, dim=1) # [E, D]

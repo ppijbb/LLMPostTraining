@@ -1,5 +1,5 @@
 """
-SEED Router Verification Test (Spectral Eigenvalue Equilibrium Dispatch)
+SEED Router Verification Test (Seqorthl Eigenvalue Equilibrium Dispatch)
 
 Validates:
 1. CV convergence < 0.001 within 100 steps
@@ -21,8 +21,8 @@ import os
 
 sys.path.insert(0, os.getcwd())
 
-from models.spectra_model import SPECTRARouter
-from models.spectra_config import SPECTRATextConfig
+from models.seqorth_model import SeqorthRouter
+from models.seqorth_config import SeqorthTextConfig
 
 
 def test_seed_cv_convergence():
@@ -34,7 +34,7 @@ def test_seed_cv_convergence():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Config with SEED enabled and AGGRESSIVE balancing
-    config = SPECTRATextConfig(
+    config = SeqorthTextConfig(
         hidden_size=256,
         n_routed_experts=16,
         router_dim=64,
@@ -50,7 +50,7 @@ def test_seed_cv_convergence():
         balancing_strength=0.05,  # Increased: more aggressive balancing
     )
     
-    router = SPECTRARouter(config).to(device)
+    router = SeqorthRouter(config).to(device)
     router.train()
     
     # Optimizer with lower LR for stability
@@ -188,14 +188,14 @@ def test_seed_gradient_flow():
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    config = SPECTRATextConfig(
+    config = SeqorthTextConfig(
         hidden_size=128,
         n_routed_experts=8,
         router_dim=32,
         seed_routing_enabled=True,
     )
     
-    router = SPECTRARouter(config).to(device)
+    router = SeqorthRouter(config).to(device)
     router.train()
     
     x = torch.randn(2, 16, 128, device=device, requires_grad=True)
@@ -227,14 +227,14 @@ def test_seed_all_experts_used():
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    config = SPECTRATextConfig(
+    config = SeqorthTextConfig(
         hidden_size=256,
         n_routed_experts=16,
         router_dim=64,
         seed_routing_enabled=True,
     )
     
-    router = SPECTRARouter(config).to(device)
+    router = SeqorthRouter(config).to(device)
     router.train()
     
     # Run multiple batches

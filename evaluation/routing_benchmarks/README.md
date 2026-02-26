@@ -1,6 +1,6 @@
-# SPECTRA 7-Day Evaluation Plan for ICML/NeurIPS Submission
+# Seqorth 7-Day Evaluation Plan for ICML/NeurIPS Submission
 
-Complete evaluation framework for SPECTRA (256-expert MoE model) designed for top-tier conference submission. This pipeline systematically evaluates training dynamics, benchmark performance, expert specialization, efficiency, and generates paper-ready LaTeX tables.
+Complete evaluation framework for Seqorth (256-expert MoE model) designed for top-tier conference submission. This pipeline systematically evaluates training dynamics, benchmark performance, expert specialization, efficiency, and generates paper-ready LaTeX tables.
 
 ## 🎯 Overview
 
@@ -53,14 +53,14 @@ Edit `config/evaluation_config.yaml`:
 
 ```yaml
 model:
-  checkpoint_path: "/path/to/your/spectra/checkpoint"  # REQUIRED
-  model_name: "SPECTRA-256E"
+  checkpoint_path: "/path/to/your/seqorth/checkpoint"  # REQUIRED
+  model_name: "Seqorth-256E"
   num_experts: 256
   active_experts: 8
 
 wandb:
   run_id: "your_wandb_run_id"  # REQUIRED
-  project: "spectra-training"
+  project: "seqorth-training"
 
 compute:
   num_gpus: 4
@@ -138,7 +138,7 @@ python eval/routing_benchmarks/day1_2_standard_benchmarks.py \
 - Generates comparison summary
 
 **Outputs:**
-- `spectra/*.json` - SPECTRA results per task
+- `seqorth/*.json` - Seqorth results per task
 - `mixtral/*.json` - Mixtral baseline results
 - `llama3/*.json` - LLaMA-3 baseline results
 - `comparison_summary.json` - Aggregated comparison
@@ -153,7 +153,7 @@ accelerate launch --multi_gpu --num_processes=4 \
 
 ### D+3~4: Expert Analysis (Core Novelty)
 
-**Purpose:** Demonstrate SPECTRA's unique expert specialization capabilities.
+**Purpose:** Demonstrate Seqorth's unique expert specialization capabilities.
 
 ```bash
 python eval/routing_benchmarks/day3_4_expert_analysis.py \
@@ -167,7 +167,7 @@ python eval/routing_benchmarks/day3_4_expert_analysis.py \
    - Generates heatmap showing which experts specialize in which domains
 
 2. **GRU Trajectory Consistency**
-   - Measures routing stability across layers (unique to SPECTRA)
+   - Measures routing stability across layers (unique to Seqorth)
    - Compares L1 distance between layer routing decisions
 
 3. **Representation Orthogonality**
@@ -226,7 +226,7 @@ python eval/routing_benchmarks/day6_comparison_table.py \
 **What it does:**
 - Aggregates results from all previous days
 - Generates three LaTeX tables:
-  1. **Table 1:** Main comparison (SPECTRA vs baselines)
+  1. **Table 1:** Main comparison (Seqorth vs baselines)
   2. **Table 2:** Ablation study results
   3. **Table 3:** Model specifications
 
@@ -277,7 +277,7 @@ python eval/routing_benchmarks/run_full_pipeline.py \
 ### Skipping Baselines
 
 ```bash
-# Evaluate SPECTRA only (faster)
+# Evaluate Seqorth only (faster)
 python eval/routing_benchmarks/day1_2_standard_benchmarks.py \
     --config eval/routing_benchmarks/config/evaluation_config.yaml \
     --skip_baselines
@@ -296,7 +296,7 @@ evaluation_results/
 │   ├── sanity_check_report.txt
 │   └── metrics.json
 ├── day1_2_benchmarks/
-│   ├── spectra/
+│   ├── seqorth/
 │   │   ├── knowledge/mmlu_results.json
 │   │   ├── reasoning/gsm8k_results.json
 │   │   └── ...
@@ -334,7 +334,7 @@ compute:
 **Solution 2:** Use 8-bit quantization:
 
 ```python
-model, tokenizer = load_spectra_checkpoint(
+model, tokenizer = load_seqorth_checkpoint(
     checkpoint_path,
     load_in_8bit=True
 )
@@ -400,7 +400,7 @@ export HF_TOKEN="your_token_here"
 
 ### Key Claims to Support
 
-1. **Load Balancing:** "SPECTRA achieves CV < 0.1 without auxiliary loss"
+1. **Load Balancing:** "Seqorth achieves CV < 0.1 without auxiliary loss"
    - Evidence: day0/cv_curve.png
 
 2. **Expert Specialization:** "Experts automatically specialize by domain"
@@ -423,8 +423,8 @@ export HF_TOKEN="your_token_here"
 If you use this evaluation framework, please cite:
 
 ```bibtex
-@article{spectra2024,
-  title={SPECTRA: Scalable and Practical Expert Routing with Trajectory-Aware MoE},
+@article{seqorth2024,
+  title={Seqorth: Scalable and Practical Expert Routing with Trajectory-Aware MoE},
   author={Your Name and Others},
   journal={arXiv preprint arXiv:XXXX.XXXXX},
   year={2024}
@@ -452,7 +452,7 @@ For issues or questions:
 Before submitting to ICML/NeurIPS:
 
 - [x] D-Day sanity check passes (GO decision)
-- [x] SPECTRA performance ≥ baseline on ≥50% of tasks
+- [x] Seqorth performance ≥ baseline on ≥50% of tasks
 - [x] Clear expert specialization visible in heatmaps
 - [x] CV < 0.3 and MaxVio < 0.15 throughout training
 - [x] All LaTeX tables generated without errors
@@ -472,11 +472,11 @@ Before submitting to ICML/NeurIPS:
 
 ## 🎉 Good Luck!
 
-This framework is battle-tested and designed to help you present SPECTRA's capabilities in the best possible light for top-tier conference submission. Follow the plan systematically, and you'll have all the evidence needed for a strong paper.
+This framework is battle-tested and designed to help you present Seqorth's capabilities in the best possible light for top-tier conference submission. Follow the plan systematically, and you'll have all the evidence needed for a strong paper.
 
 ---
 
 **Last Updated:** 2024-12-18  
 **Version:** 1.0  
-**Maintainer:** SPECTRA Team
+**Maintainer:** Seqorth Team
 

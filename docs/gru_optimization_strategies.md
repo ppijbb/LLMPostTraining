@@ -187,7 +187,7 @@ class GroupedGRU(nn.Module):
 ### ✅ **1단계: router_dim 축소 (즉시 적용)**
 
 ```json
-// spectra_small_config.json
+// seqorth_small_config.json
 {
   "router_dim": 32  // 128 → 32 (75% 감소)
 }
@@ -211,7 +211,7 @@ class GroupedGRU(nn.Module):
 현재 코드에 Low-Rank GRU 구현 추가
 
 **구현 위치:**
-- `models/spectra_model.py`의 `SPECTRARouter` 클래스
+- `models/seqorth_model.py`의 `SeqorthRouter` 클래스
 - `self.load_balancer`를 Low-Rank GRU로 교체
 
 **권장 rank:**

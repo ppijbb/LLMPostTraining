@@ -210,11 +210,11 @@ class ModulesToSaveSyncCallback(TrainerCallback):
                 if actual_model is None:
                     return control
                 
-                from models.spectra_model import SPECTRARouter, SwitchRouterAdapter
+                from models.seqorth_model import SeqorthRouter, SwitchRouterAdapter
                 sync_count = 0
                 
                 for name, module in actual_model.named_modules():
-                    if isinstance(module, SPECTRARouter):
+                    if isinstance(module, SeqorthRouter):
                         # expression_projector의 linear_projection 동기화
                         if hasattr(module, 'expression_projector'):
                             expr_proj = module.expression_projector
@@ -259,11 +259,11 @@ class ModulesToSaveSyncCallback(TrainerCallback):
             if actual_model is None:
                 return control
             
-            from models.spectra_model import SPECTRARouter, SwitchRouterAdapter
+            from models.seqorth_model import SeqorthRouter, SwitchRouterAdapter
             sync_count = 0
             
             for name, module in actual_model.named_modules():
-                if isinstance(module, SPECTRARouter):
+                if isinstance(module, SeqorthRouter):
                     # expression_projector의 linear_projection 동기화
                     if hasattr(module, 'expression_projector'):
                         expr_proj = module.expression_projector

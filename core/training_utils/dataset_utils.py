@@ -111,8 +111,8 @@ def setup_dataset(data_config: Dict[str, Any], tokenizer, logger: logging.Logger
             except Exception:
                 pass
 
-        # [0vs2048] 디버깅 시에만: 첫 배치 1회 로그 (SPECTRA_DEBUG_0VS2048=1 일 때만)
-        if os.environ.get("SPECTRA_DEBUG_0VS2048") == "1" and not getattr(pure_qwen_collate_fn, "_logged_once", False):
+        # [0vs2048] 디버깅 시에만: 첫 배치 1회 로그 (SEQORTH_DEBUG_0VS2048=1 일 때만)
+        if os.environ.get("SEQORTH_DEBUG_0VS2048") == "1" and not getattr(pure_qwen_collate_fn, "_logged_once", False):
             pure_qwen_collate_fn._logged_once = True
             _pv = batch.get("pixel_values")
             _grid = batch.get("image_grid_thw")
@@ -122,6 +122,6 @@ def setup_dataset(data_config: Dict[str, Any], tokenizer, logger: logging.Logger
 
         return batch
 
-    if os.environ.get("SPECTRA_DEBUG_0VS2048") == "1":
+    if os.environ.get("SEQORTH_DEBUG_0VS2048") == "1":
         logger.info("[0vs2048] Collator: pure_qwen_collate_fn | image resize 224x224 → uniform vision patch count across ranks")
     return dataset, pure_qwen_collate_fn

@@ -118,7 +118,7 @@ def main():
     
     # Determine which models to include
     comparison_group = baseline_config["comparison_groups"]["similar_active_params"]
-    model_names = ["SPECTRA"] + [baseline_config["models"][k]["name"] 
+    model_names = ["Seqorth"] + [baseline_config["models"][k]["name"] 
                                   for k in comparison_group 
                                   if k in baseline_config["models"]]
     
@@ -129,7 +129,7 @@ def main():
         results = aggregate_model_results(tracker, model_name)
         
         # Add parameter info
-        if model_name == "SPECTRA":
+        if model_name == "Seqorth":
             results["total_params"] = config["model"].get("num_experts", 256) * 1e9  # Approximate
             results["active_params"] = config["model"].get("active_experts", 8) * 1e9 / config["model"].get("num_experts", 256)
         else:
@@ -191,13 +191,13 @@ def main():
     
     model_specs = {}
     
-    # SPECTRA specs
-    model_specs["SPECTRA"] = {
+    # Seqorth specs
+    model_specs["Seqorth"] = {
         "total_params": config["model"].get("num_experts", 256) * 1e9,
         "active_params": config["model"].get("active_experts", 8) * 1e9,
         "num_experts": config["model"].get("num_experts", 256),
         "top_k": config["model"].get("active_experts", 8),
-        "router_type": "SPECTRA (OSR + GRU)"
+        "router_type": "Seqorth (OSR + GRU)"
     }
     
     # Baseline specs
@@ -253,7 +253,7 @@ def main():
     # Generate human-readable report
     report_lines = []
     report_lines.append("=" * 80)
-    report_lines.append("SPECTRA 7-Day Evaluation: Final Report")
+    report_lines.append("Seqorth 7-Day Evaluation: Final Report")
     report_lines.append("=" * 80)
     report_lines.append("")
     report_lines.append("Generated Tables:")
@@ -265,10 +265,10 @@ def main():
     report_lines.append("Key Results:")
     report_lines.append("")
     
-    if "SPECTRA" in model_results:
-        spectra_res = model_results["SPECTRA"]
-        report_lines.append("SPECTRA Performance:")
-        for key, value in spectra_res.items():
+    if "Seqorth" in model_results:
+        seqorth_res = model_results["Seqorth"]
+        report_lines.append("Seqorth Performance:")
+        for key, value in seqorth_res.items():
             if value is not None and not key.startswith("_"):
                 report_lines.append(f"  - {key}: {value}")
         report_lines.append("")

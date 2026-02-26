@@ -1,0 +1,96 @@
+{
+    "bf16": {
+        "enabled": true
+    },
+    "zero_allow_untested_optimizer": true,
+    "optimizer": {
+        "type": "Muon",
+        "params": {
+            "lr": "auto",
+            "betas": [
+                0.9,
+                0.999
+            ],
+            "eps": 1e-8,
+            "weight_decay": "auto"
+        }
+    },
+    "tensor_parallel": {
+        "autotp_size": 2,
+        "tp_overlap_comm": false
+    },
+    "aio": {
+        "block_size": 2097152,
+        "queue_depth": 32,
+        "thread_count": 4,
+        "single_submit": false,
+        "overlap_events": true
+    },
+    "zero_optimization": {
+        "stage": 2,
+        "offload_optimizer": {
+            "device": "nvme",
+            "nvme_path": "/mls/conan/offload",
+            "pin_memory": false,
+            "fast_init": true,
+            "ratio": 1,
+            "buffer_count": 8,
+            "pipeline_read": false,
+            "pipeline_write": false
+        },
+        "offload_param": {
+            "device": "none"
+        },
+        "allgather_partitions": true,
+        "overlap_comm": true,
+        "contiguous_gradients": true,
+        "reduce_bucket_size": 50000000,
+        "allgather_bucket_size": 50000000,
+        "ignore_unused_parameters": true,
+        "leaf_module": {
+            "classes": [
+                "Qwen3VLMoeVisionModel",
+                "Qwen3VLMoeVisionBlock",
+                "Qwen3VLMoeVisionPatchEmbed",
+                "Qwen3VLMoeVisionPatchMerger",
+                "Qwen3VLMoeVisionMLP",
+                "Qwen3VLMoeVisionAttention",
+                "Qwen3VLMoeTextExperts",
+                "SiglipVisionModel",
+                "SiglipVisionTransformer",
+                "SiglipEncoder",
+                "SeqorthMultiModalProjector",
+                "SeqorthMoE",
+                "SeqorthAttention",
+                "SeqorthMLP"
+            ]
+        }
+    },
+    "prescale_gradients": false,
+    "scheduler": {
+        "type": "WarmupDecayLR",
+        "params": {
+            "last_batch_iteration": -1,
+            "total_num_steps": "auto",
+            "warmup_min_lr": "auto",
+            "warmup_max_lr": "auto",
+            "warmup_num_steps": "auto"
+        }
+    },
+    "activation_checkpointing": {
+        "partition_activations": true,
+        "cpu_checkpointing": false,
+        "contiguous_memory_optimization": true,
+        "number_checkpoints": 1,
+        "synchronize_checkpoint_boundary": true
+    },
+    "gradient_clipping": "auto",
+    "gradient_accumulation_steps": "auto",
+    "train_batch_size": "auto",
+    "train_micro_batch_size_per_gpu": 1,
+    "steps_per_print": 10,
+    "wall_clock_breakdown": false,
+    "data_types": {
+        "grad_accum_dtype": "bf16"
+    }
+}

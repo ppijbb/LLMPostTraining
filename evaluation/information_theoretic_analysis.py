@@ -1,10 +1,10 @@
 # coding=utf-8
 """
-Information-Theoretic Analysis for SPECTRA MoE
+Information-Theoretic Analysis for Seqorth MoE
 
 핵심 질문:
 1. 각 expert가 입력의 어떤 정보를 담당하는가? (Mutual Information)
-2. SPECTRA MoE가 정보를 어떻게 압축하고 보존하는가? (Information Bottleneck)
+2. Seqorth MoE가 정보를 어떻게 압축하고 보존하는가? (Information Bottleneck)
 3. Expert space가 얼마나 많은 정보를 담을 수 있는가? (Representation Capacity)
 """
 
@@ -118,7 +118,7 @@ class MutualInformationEstimator:
 
 class InformationTheoreticAnalyzer:
     """
-    Information-theoretic analysis for SPECTRA MoE
+    Information-theoretic analysis for Seqorth MoE
     
     핵심 분석:
     1. Expert-Input Mutual Information

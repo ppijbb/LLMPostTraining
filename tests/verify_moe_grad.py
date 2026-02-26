@@ -7,21 +7,21 @@ import os
 # Add project root to path
 sys.path.append(os.getcwd())
 
-from models.spectra_model import SPECTRARouter
-from models.spectra_config import SPECTRATextConfig
+from models.seqorth_model import SeqorthRouter
+from models.seqorth_config import SeqorthTextConfig
 
 def test_router_checkpointing():
-    print("Testing SPECTRARouter with Gradient Checkpointing...")
+    print("Testing SeqorthRouter with Gradient Checkpointing...")
     
     # Mock config
-    config = SPECTRATextConfig(
+    config = SeqorthTextConfig(
         hidden_size=576,
         n_routed_experts=32,
         router_dim=128,
-        router_impl="spectra"
+        router_impl="seqorth"
     )
     
-    router = SPECTRARouter(config).cuda().bfloat16()
+    router = SeqorthRouter(config).cuda().bfloat16()
     router.train()
     
     # Input

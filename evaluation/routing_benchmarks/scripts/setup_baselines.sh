@@ -5,7 +5,7 @@
 set -e
 
 echo "=================================="
-echo "SPECTRA Baseline Setup"
+echo "Seqorth Baseline Setup"
 echo "=================================="
 echo ""
 
@@ -89,7 +89,7 @@ echo ""
 echo "Downloaded models are cached in: $CACHE_DIR"
 echo ""
 echo "Next steps:"
-echo "  1. Update config/evaluation_config.yaml with your SPECTRA checkpoint path"
+echo "  1. Update config/evaluation_config.yaml with your Seqorth checkpoint path"
 echo "  2. Run: ./scripts/run_all.sh"
 echo ""
 

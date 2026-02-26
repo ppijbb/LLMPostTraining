@@ -2,8 +2,8 @@
 import sys
 
 new_router_code = """
-class SPECTRARouter(nn.Module):
-    def __init__(self, config: SPECTRATextConfig, **kwargs):
+class SeqorthRouter(nn.Module):
+    def __init__(self, config: SeqorthTextConfig, **kwargs):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
@@ -24,7 +24,7 @@ class SPECTRARouter(nn.Module):
         self.register_buffer("cv_ema", torch.tensor(1.0), persistent=True)
         self.ema_alpha = getattr(config, "ema_alpha", 0.99)
         
-        # Dummy attributes for SPECTRAMoE compatibility
+        # Dummy attributes for SeqorthMoE compatibility
         self.expression_projector = nn.Module()
         self.expression_projector.ortho_strength = 0.0
 
@@ -78,7 +78,7 @@ class SPECTRARouter(nn.Module):
         routing_probs_full = routing_weights.view(batch_size, seq_len, self.num_experts)
         zero = torch.tensor(0.0, device=x.device)
         
-        # 15 returns to match SPECTRAMoE expectation
+        # 15 returns to match SeqorthMoE expectation
         return (
             topk_weight.view(batch_size, seq_len, k), # Multiplier
             topk_idx.view(batch_size, seq_len, k),    # Selected Experts
@@ -98,7 +98,7 @@ class SPECTRARouter(nn.Module):
         )
 """
 
-file_path = "/home/conan/workspace/llm_training/models/spectra_model.py"
+file_path = "/home/conan/workspace/llm_training/models/seqorth_model.py"
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -112,13 +112,13 @@ start_idx = -1
 end_idx = -1
 
 for i, line in enumerate(lines):
-    if "class SPECTRARouter(nn.Module):" in line:
+    if "class SeqorthRouter(nn.Module):" in line:
         start_idx = i
-    # Look for the start of SPECTRAMoE to define end of Router
+    # Look for the start of SeqorthMoE to define end of Router
     # User file view shows:
     # 1970: iterations = 0
-    # 1971: class SPECTRAMoE(nn.Module):
-    if "iterations = 0" in line and (i+1 < len(lines) and "class SPECTRAMoE" in lines[i+1]):
+    # 1971: class SeqorthMoE(nn.Module):
+    if "iterations = 0" in line and (i+1 < len(lines) and "class SeqorthMoE" in lines[i+1]):
         end_idx = i
         break
 
@@ -128,6 +128,6 @@ if start_idx != -1 and end_idx != -1:
     new_lines = lines[:start_idx] + [new_router_code] + lines[end_idx:]
     with open(file_path, "w") as f:
         f.writelines(new_lines)
-    print("Successfully replaced SPECTRARouter")
+    print("Successfully replaced SeqorthRouter")
 else:
     print(f"Failed to find class boundaries. Start: {start_idx}, End: {end_idx}")

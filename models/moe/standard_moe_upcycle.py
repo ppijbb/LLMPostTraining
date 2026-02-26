@@ -7,7 +7,7 @@ Implements a baseline MoE router using Switch Transformer's approach:
 - Standard load balancing auxiliary loss
 - Top-k expert selection
 
-This is used for fair comparison with SPECTRA MoE.
+This is used for fair comparison with Seqorth MoE.
 """
 
 import torch
@@ -17,7 +17,7 @@ from typing import Optional, Dict, Any
 from tqdm.auto import tqdm
 
 # Import necessary components
-from models.spectra import (
+from models.seqorth import (
     find_layers_in_model,
     find_mlp_in_layer,
     is_already_moe,
@@ -93,7 +93,7 @@ class SwitchRouter(nn.Module):
         # Compute load balancing auxiliary loss (Switch Transformer style)
         load_balance_loss = self._compute_load_balance_loss(routing_weights)
         
-        # Return compatibility with SPECTRARouter
+        # Return compatibility with SeqorthRouter
         return (
             multiplier,
             selected_experts,
@@ -124,7 +124,7 @@ class StandardMoEBlock(nn.Module):
     """
     Standard MoE Block using Switch Router.
     
-    Similar structure to SPECTRABlock but uses SwitchRouter instead.
+    Similar structure to SeqorthBlock but uses SwitchRouter instead.
     """
     
     def __init__(
@@ -277,7 +277,7 @@ def upcycle_to_switch_moe(
     """
     Upcycle any pretrained model to Standard MoE (Switch Transformer style).
     
-    This is used as a baseline for comparison with SPECTRA MoE.
+    This is used as a baseline for comparison with Seqorth MoE.
     
     Args:
         model: The pretrained transformer model to upcycle

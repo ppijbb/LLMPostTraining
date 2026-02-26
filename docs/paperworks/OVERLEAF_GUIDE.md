@@ -15,8 +15,8 @@
 다음 파일들을 업로드하세요:
 
 **필수 파일:**
-- `spectra_icml2026.tex` (메인 논문)
-- `spectra_references.bib` (참고문헌)
+- `seqorth_icml2026.tex` (메인 논문)
+- `seqorth_references.bib` (참고문헌)
 
 **스타일 파일들 (icml2026 폴더에서):**
 - `icml2026.sty`

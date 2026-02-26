@@ -1562,7 +1562,7 @@ class GramSpecMoEGRINMoE(nn.Module):
             # Calculate orthogonality loss from expert weights
             if expert_weights_list:
                 expert_weight_ortho_loss = calculate_ortho_loss_for_experts(expert_weights_list)
-                # Combine with router's speciality_loss (Spectral Vector orthogonality)
+                # Combine with router's speciality_loss (Seqorthl Vector orthogonality)
                 if speciality_loss is not None and torch.is_tensor(speciality_loss):
                     # Weighted combination: expert weights ortho + spectral vector ortho
                     speciality_loss = (speciality_loss * 0.5 + expert_weight_ortho_loss * 0.5)#.requires_grad_(True)

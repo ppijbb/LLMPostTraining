@@ -1,5 +1,5 @@
-class SPECTRARouter(nn.Module):
-    def __init__(self, config: SPECTRATextConfig, **kwargs):
+class SeqorthRouter(nn.Module):
+    def __init__(self, config: SeqorthTextConfig, **kwargs):
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size

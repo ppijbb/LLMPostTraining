@@ -33,13 +33,13 @@ import os
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from models.spectra_config import SPECTRATextConfig
-from models.spectra_model import SPECTRARouter
+from models.seqorth_config import SeqorthTextConfig
+from models.seqorth_model import SeqorthRouter
 
 
 def verify_safe_nuclear_router():
     """
-    Comprehensive verification test for SPECTRARouter with:
+    Comprehensive verification test for SeqorthRouter with:
     - Safe speciality loss computation (prevents Inf/NaN)
     - Nuclear Option (CV-based dynamic logit interpolation)
     - CV convergence to < 0.005
@@ -56,13 +56,13 @@ def verify_safe_nuclear_router():
     STEPS = 2000  # Significantly increased for better convergence
     
     print("=" * 80)
-    print("SPECTRARouter Safe Nuclear Option Verification Test")
+    print("SeqorthRouter Safe Nuclear Option Verification Test")
     print("=" * 80)
     print(f"Config: BATCH={BATCH}, SEQ={SEQ}, DIM={DIM}, EXPERTS={EXPERTS}, STEPS={STEPS}")
     print()
     
     # Create config with AGGRESSIVE balancing parameters
-    config = SPECTRATextConfig()
+    config = SeqorthTextConfig()
     config.n_routed_experts = EXPERTS
     config.hidden_size = DIM
     config.router_dim = 64
@@ -89,7 +89,7 @@ def verify_safe_nuclear_router():
     config.balancing_strength = 0.1  # Very high: Maximum aggressive balancing (default: 0.01)
     
     # Initialize router
-    model = SPECTRARouter(config)
+    model = SeqorthRouter(config)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)  # Very low LR for stability
     model.train()
     
@@ -455,7 +455,7 @@ def hyperparameter_sweep():
         EXPERTS = 64
         STEPS = 1000  # Shorter for sweep
         
-        config = SPECTRATextConfig()
+        config = SeqorthTextConfig()
         config.n_routed_experts = EXPERTS
         config.hidden_size = DIM
         config.router_dim = 64
@@ -474,7 +474,7 @@ def hyperparameter_sweep():
         config.balance_loss_coef = cfg['balance_loss_coef']
         config.balancing_strength = 0.05
         
-        model = SPECTRARouter(config)
+        model = SeqorthRouter(config)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
         model.train()
         

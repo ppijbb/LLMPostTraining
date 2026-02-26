@@ -1,7 +1,7 @@
 
 import os
 
-target_file = '/home/conan/workspace/llm_training/models/spectra_model.py'
+target_file = '/home/conan/workspace/llm_training/models/seqorth_model.py'
 new_code_file = '/home/conan/workspace/llm_training/models/new_router_code.py'
 
 # Read original file
@@ -23,14 +23,14 @@ end_idx = 2160   # Line 2161 (0-indexed)
 print(f"Line at start_idx ({start_idx+1}): {lines[start_idx].strip()}")
 print(f"Line at end_idx ({end_idx+1}): {lines[end_idx].strip()}")
 
-expected_start = "class SPECTRARouter(nn.Module):"
+expected_start = "class SeqorthRouter(nn.Module):"
 expected_end = "iterations = 0"
 
 if expected_start not in lines[start_idx]:
     print(f"WARNING: Expected '{expected_start}' but got '{lines[start_idx].strip()}'")
     # Don't abort, just warn? NO, abort if critical mismatch to avoid ruining file.
     # But whitespace might differ.
-    if "class SPECTRARouter" not in lines[start_idx]:
+    if "class SeqorthRouter" not in lines[start_idx]:
          print("CRITICAL MISMATCH at start. Aborting.")
          exit(1)
 
@@ -50,4 +50,4 @@ new_lines.extend(lines[end_idx:])
 with open(target_file, 'w') as f:
     f.writelines(new_lines)
 
-print("Successfully replaced SPECTRARouter class.")
+print("Successfully replaced SeqorthRouter class.")

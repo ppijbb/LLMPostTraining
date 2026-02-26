@@ -1,4 +1,4 @@
-"""Visualization utilities for SPECTRA evaluation results."""
+"""Visualization utilities for Seqorth evaluation results."""
 
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -214,7 +214,7 @@ def plot_expert_heatmap(
 
 
 def plot_trajectory_consistency(
-    spectra_consistency: np.ndarray,
+    seqorth_consistency: np.ndarray,
     baseline_consistency: Optional[np.ndarray] = None,
     baseline_name: str = "Baseline",
     output_file: Optional[Union[str, Path]] = None,
@@ -225,7 +225,7 @@ def plot_trajectory_consistency(
     Plot trajectory consistency comparison.
     
     Args:
-        spectra_consistency: Array of consistency scores for SPECTRA
+        seqorth_consistency: Array of consistency scores for Seqorth
         baseline_consistency: Optional array for baseline model
         baseline_name: Name of baseline model
         output_file: Optional file to save figure
@@ -237,17 +237,17 @@ def plot_trajectory_consistency(
     """
     fig, ax = plt.subplots(figsize=figsize)
     
-    # Plot SPECTRA
-    ax.hist(spectra_consistency, bins=50, alpha=0.7, label="SPECTRA", color='blue', edgecolor='black')
+    # Plot Seqorth
+    ax.hist(seqorth_consistency, bins=50, alpha=0.7, label="Seqorth", color='blue', edgecolor='black')
     
     # Plot baseline if provided
     if baseline_consistency is not None:
         ax.hist(baseline_consistency, bins=50, alpha=0.7, label=baseline_name, color='orange', edgecolor='black')
     
     # Add mean lines
-    spectra_mean = spectra_consistency.mean()
-    ax.axvline(spectra_mean, color='blue', linestyle='--', linewidth=2,
-               label=f'SPECTRA Mean: {spectra_mean:.3f}')
+    seqorth_mean = seqorth_consistency.mean()
+    ax.axvline(seqorth_mean, color='blue', linestyle='--', linewidth=2,
+               label=f'Seqorth Mean: {seqorth_mean:.3f}')
     
     if baseline_consistency is not None:
         baseline_mean = baseline_consistency.mean()
@@ -389,7 +389,7 @@ def plot_loss_curve(
 
 
 def plot_throughput_comparison(
-    spectra_metrics: Dict[str, float],
+    seqorth_metrics: Dict[str, float],
     baseline_metrics: Dict[str, Dict[str, float]],
     output_file: Optional[Union[str, Path]] = None,
     title: str = "Inference Throughput Comparison",
@@ -399,7 +399,7 @@ def plot_throughput_comparison(
     Plot throughput comparison bar chart.
     
     Args:
-        spectra_metrics: Dict with keys like "tokens_per_sec", "ttft_ms"
+        seqorth_metrics: Dict with keys like "tokens_per_sec", "ttft_ms"
         baseline_metrics: Dict mapping baseline names to their metrics
         output_file: Optional file to save figure
         title: Plot title
@@ -411,10 +411,10 @@ def plot_throughput_comparison(
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
     
     # Prepare data
-    models = ["SPECTRA"] + list(baseline_metrics.keys())
-    tokens_per_sec = [spectra_metrics.get("tokens_per_sec", 0)] + \
+    models = ["Seqorth"] + list(baseline_metrics.keys())
+    tokens_per_sec = [seqorth_metrics.get("tokens_per_sec", 0)] + \
                      [m.get("tokens_per_sec", 0) for m in baseline_metrics.values()]
-    ttft_ms = [spectra_metrics.get("ttft_ms", 0)] + \
+    ttft_ms = [seqorth_metrics.get("ttft_ms", 0)] + \
               [m.get("ttft_ms", 0) for m in baseline_metrics.values()]
     
     # Plot 1: Tokens/sec (higher is better)

@@ -122,10 +122,10 @@ def create_routing_wrapper(
 
 def _detect_num_experts(model: nn.Module) -> Optional[int]:
     """모델에서 num_experts 자동 감지"""
-    # SPECTRA 모델
+    # Seqorth 모델
     if hasattr(model, 'config'):
         config = model.config
-        # SPECTRA config 구조 확인
+        # Seqorth config 구조 확인
         if hasattr(config, 'text_config'):
             text_config = config.text_config
             if hasattr(text_config, 'n_routed_experts'):

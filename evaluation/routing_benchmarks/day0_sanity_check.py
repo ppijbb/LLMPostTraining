@@ -22,7 +22,7 @@ import json
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from eval.routing_benchmarks.utils import (
-    load_spectra_checkpoint,
+    load_seqorth_checkpoint,
     prepare_model_for_eval,
     extract_cv_curve,
     extract_maxvio_curve,
@@ -249,7 +249,7 @@ def generate_sanity_check_report(
     # Generate text report
     report_lines = []
     report_lines.append("=" * 80)
-    report_lines.append("SPECTRA D-Day Sanity Check Report")
+    report_lines.append("Seqorth D-Day Sanity Check Report")
     report_lines.append("=" * 80)
     report_lines.append("")
     report_lines.append(f"DECISION: {report['decision']}")
@@ -292,7 +292,7 @@ def generate_sanity_check_report(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="D-Day: SPECTRA Sanity Check")
+    parser = argparse.ArgumentParser(description="D-Day: Seqorth Sanity Check")
     parser.add_argument(
         "--config",
         type=str,
@@ -406,7 +406,7 @@ def main():
             create_multi_curve_figure(
                 curves,
                 output_file=output_dir / "training_dynamics.png",
-                title="SPECTRA Training Dynamics"
+                title="Seqorth Training Dynamics"
             )
             
             # Store final values for GO/NO-GO
@@ -427,7 +427,7 @@ def main():
         
         # Load model
         logger.info("Loading model...")
-        model, tokenizer = load_spectra_checkpoint(
+        model, tokenizer = load_seqorth_checkpoint(
             checkpoint_path,
             device="cuda",
             torch_dtype=torch.bfloat16,

@@ -17,7 +17,7 @@
 #### A.1 Expert Specialization (핵심 주장)
 - **Expert Overlap**: Jaccard similarity between expert token sets
   - 낮을수록 specialization 우수
-  - **목표**: SPECTRA < Switch Top-2 < Switch Top-1
+  - **목표**: Seqorth < Switch Top-2 < Switch Top-1
 - **Gram Matrix Orthogonality**: `1 - ||G-I||_F / (E*√2)` (높을수록 좋음, 1.0 = 완전 orthogonal)
   - **현재 측정값**: 0.94 ✅
 - **Expert Diversity Score**: 1 - mean(expert_similarity)
@@ -377,7 +377,7 @@ ERMoE (2025) | N/A | N/A | N/A | N/A | N/A | N/A | No | arxiv:2511.10971 (metric
 LPR (2025) | N/A | N/A | N/A | N/A | 0.035 | N/A | No | arxiv:2506.21328 (Gini only)
 LASER (2025) | N/A | N/A | N/A | N/A | N/A | N/A | No | arxiv:2510.03293 (metrics not reported)
 RoMA (2025) | N/A | N/A | N/A | N/A | N/A | N/A | No | arxiv:2511.07419 (metrics not reported)
-SPECTRA (Ours) | 측정 필요 | 0.94 ✅ | 측정 필요 | 0.3 ❌ | 측정 필요 | 측정 필요 | No | 직접 측정
+Seqorth (Ours) | 측정 필요 | 0.94 ✅ | 측정 필요 | 0.3 ❌ | 측정 필요 | 측정 필요 | No | 직접 측정
 ```
 
 **실제 논문에서 보고된 Metrics**:
@@ -411,7 +411,7 @@ SPECTRA (Ours) | 측정 필요 | 0.94 ✅ | 측정 필요 | 0.3 ❌ | 측정 필
 ```
 Variant | Expert Overlap | Gram Ortho | Load Balance CV | Routing Consistency | Sequential Consistency
 --------|----------------|------------|-----------------|---------------------|------------------------
-SPECTRA-Full | 측정 필요 | 0.94 ✅ | 0.3 ❌ | 측정 필요 | 측정 필요
+Seqorth-Full | 측정 필요 | 0.94 ✅ | 0.3 ❌ | 측정 필요 | 측정 필요
   -Expression | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요
   -GRU | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요
   -SpecialityPenalty | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요
@@ -435,7 +435,7 @@ Switch Top-1 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | �
 Switch Top-2 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요
 Expert Choice | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요
 Hash Routing | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요
-SPECTRA (Ours) | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요
+Seqorth (Ours) | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요
 ```
 
 **참고**: Task performance는 routing quality의 결과로 보고
@@ -448,13 +448,13 @@ SPECTRA (Ours) | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 |
 Model | HumanEval | MBPP | GSM8K | MATH | PubMedQA | SciFact
 ------|-----------|------|-------|------|----------|--------
 Switch Top-2 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요
-SPECTRA (Ours) | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요
+Seqorth (Ours) | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요 | 측정 필요
 Improvement | 계산 필요 | 계산 필요 | 계산 필요 | 계산 필요 | 계산 필요 | 계산 필요
 ```
 
 ---
 
-## 🎯 SPECTRA 비교 기준 (실제 보고된 수치 기준)
+## 🎯 Seqorth 비교 기준 (실제 보고된 수치 기준)
 
 ### 실제 측정 가능한 비교 대상
 
@@ -592,12 +592,12 @@ Improvement | 계산 필요 | 계산 필요 | 계산 필요 | 계산 필요 | �
 - [ ] Dense MLP baseline (upper bound)
 
 ### 2. Ablation Variants
-- [ ] SPECTRA-Full (baseline)
-- [ ] SPECTRA w/o Expression
-- [ ] SPECTRA w/o GRU
-- [ ] SPECTRA w/o Speciality Penalty
-- [ ] SPECTRA w/o Orthogonal Constraint
-- [ ] SPECTRA w/o All Enhancements
+- [ ] Seqorth-Full (baseline)
+- [ ] Seqorth w/o Expression
+- [ ] Seqorth w/o GRU
+- [ ] Seqorth w/o Speciality Penalty
+- [ ] Seqorth w/o Orthogonal Constraint
+- [ ] Seqorth w/o All Enhancements
 
 ### 3. Model Scales
 - [ ] GPT-2-Medium (345M) - Dense to MoE
@@ -605,7 +605,7 @@ Improvement | 계산 필요 | 계산 필요 | 계산 필요 | 계산 필요 | �
 - [ ] Mixtral-8x7B - Router replacement
 
 ### 4. Routing Metrics Evaluation Setup (최우선)
-- [ ] Expert specialization analysis tools (spectra_analysis.py)
+- [ ] Expert specialization analysis tools (seqorth_analysis.py)
 - [ ] Load balancing metrics collection
 - [ ] Routing consistency measurement
 - [ ] Sequential routing pattern analysis
@@ -693,7 +693,7 @@ Improvement | 계산 필요 | 계산 필요 | 계산 필요 | 계산 필요 | �
 ### 비교 기준 재설정
 - **LPR의 Gini 0.035**: Near-perfect balancing의 기준
 - **Switch Transformer의 94.8% utilization**: 참고용
-- **자체 측정값**: SPECTRA의 실제 측정값과 비교
+- **자체 측정값**: Seqorth의 실제 측정값과 비교
 - **Performance gain**: Advancing Expert Specialization의 23.79% gain과 비교
 
 ---
@@ -727,7 +727,7 @@ Improvement | 계산 필요 | 계산 필요 | 계산 필요 | 계산 필요 | �
 
 ---
 
-## 📝 현재 SPECTRA 상태
+## 📝 현재 Seqorth 상태
 
 ### 측정 완료
 - ✅ **Gram Orthogonality**: 0.94 (목표 달성)

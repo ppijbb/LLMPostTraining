@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Full Pipeline Runner for SPECTRA 7-Day Evaluation
+Full Pipeline Runner for Seqorth 7-Day Evaluation
 
 Automatically runs all evaluation days from D-Day to D+6.
 """
@@ -189,7 +189,7 @@ class PipelineRunner:
             True if all steps succeeded, False otherwise
         """
         logger.info("=" * 80)
-        logger.info("SPECTRA 7-Day Evaluation Pipeline")
+        logger.info("Seqorth 7-Day Evaluation Pipeline")
         logger.info("=" * 80)
         logger.info(f"Config: {self.config_path}")
         logger.info(f"Output: {self.base_dir}")
@@ -268,7 +268,7 @@ class PipelineRunner:
         """Generate pipeline execution report."""
         report_lines = []
         report_lines.append("=" * 80)
-        report_lines.append("SPECTRA 7-Day Evaluation Pipeline Report")
+        report_lines.append("Seqorth 7-Day Evaluation Pipeline Report")
         report_lines.append("=" * 80)
         report_lines.append("")
         report_lines.append(f"Config: {self.config_path}")
@@ -318,7 +318,7 @@ class PipelineRunner:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Run SPECTRA 7-Day Evaluation Pipeline",
+        description="Run Seqorth 7-Day Evaluation Pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

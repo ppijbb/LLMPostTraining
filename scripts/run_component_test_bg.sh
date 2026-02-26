@@ -1,9 +1,9 @@
 #!/bin/bash
-# SPECTRA 컴포넌트별 자동 점검 - 백그라운드 실행용
-# 결과는 spectra_component_report.md에 저장됩니다.
+# Seqorth 컴포넌트별 자동 점검 - 백그라운드 실행용
+# 결과는 seqorth_component_report.md에 저장됩니다.
 
 WORKSPACE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REPORT_FILE="${WORKSPACE}/spectra_component_report.md"
+REPORT_FILE="${WORKSPACE}/seqorth_component_report.md"
 LOG_DIR="${WORKSPACE}/component_test_logs"
 MASTER_LOG="${WORKSPACE}/component_test_master.log"
 
@@ -15,7 +15,7 @@ source /home/conan/miniconda3/etc/profile.d/conda.sh
 conda activate llm_train
 
 echo "========================================================================"
-echo "SPECTRA 컴포넌트 자동 점검 시작"
+echo "Seqorth 컴포넌트 자동 점검 시작"
 echo "시작 시간: $(date '+%Y-%m-%d %H:%M:%S')"
 echo "========================================================================"
 
@@ -42,20 +42,20 @@ run_single_test() {
     local start_time=$(date +%s)
     
     # 환경 변수 설정
-    export SPECTRA_TEST_MODE=1
-    export SPECTRA_TEST_MAX_STEPS=1
+    export SEQORTH_TEST_MODE=1
+    export SEQORTH_TEST_MAX_STEPS=1
     [ -n "$env_var" ] && export $env_var
     
     # 실행 (타임아웃 45분)
     cd "$WORKSPACE"
-    timeout 2700 bash training/spectra_sft/run_spectra.sh > "$log_file" 2>&1
+    timeout 2700 bash training/seqorth_sft/run_seqorth.sh > "$log_file" 2>&1
     local exit_code=$?
     
     local end_time=$(date +%s)
     local duration=$((end_time - start_time))
     
     # 환경 변수 정리
-    unset SPECTRA_TEST_MODE SPECTRA_TEST_MAX_STEPS
+    unset SEQORTH_TEST_MODE SEQORTH_TEST_MAX_STEPS
     [ -n "$env_var" ] && unset "${env_var%%=*}"
     
     # 결과 분석
@@ -90,32 +90,32 @@ run_single_test() {
 
 # 테스트 실행
 echo ""
-echo "테스트 1/7: baseline_no_spectra"
-run_single_test "baseline_no_spectra" "SPECTRA 완전 비활성화" "SPECTRA_DISABLE_ALL=1"
+echo "테스트 1/7: baseline_no_seqorth"
+run_single_test "baseline_no_seqorth" "Seqorth 완전 비활성화" "SEQORTH_DISABLE_ALL=1"
 
 echo ""
 echo "테스트 2/7: disable_expert_dispatch"
-run_single_test "disable_expert_dispatch" "Expert dispatch 비활성화" "SPECTRA_DISABLE_EXPERT_DISPATCH=1"
+run_single_test "disable_expert_dispatch" "Expert dispatch 비활성화" "SEQORTH_DISABLE_EXPERT_DISPATCH=1"
 
 echo ""
 echo "테스트 3/7: disable_router"
-run_single_test "disable_router" "SPECTRARouter 비활성화" "SPECTRA_DISABLE_ROUTER=1"
+run_single_test "disable_router" "SeqorthRouter 비활성화" "SEQORTH_DISABLE_ROUTER=1"
 
 echo ""
 echo "테스트 4/7: disable_shared_experts"
-run_single_test "disable_shared_experts" "shared_experts 비활성화" "SPECTRA_DISABLE_SHARED_EXPERTS=1"
+run_single_test "disable_shared_experts" "shared_experts 비활성화" "SEQORTH_DISABLE_SHARED_EXPERTS=1"
 
 echo ""
 echo "테스트 5/7: disable_intent_gated"
-run_single_test "disable_intent_gated" "IntentGatedContextCell 비활성화" "SPECTRA_DISABLE_INTENT_GATED=1"
+run_single_test "disable_intent_gated" "IntentGatedContextCell 비활성화" "SEQORTH_DISABLE_INTENT_GATED=1"
 
 echo ""
 echo "테스트 6/7: disable_expression_proj"
-run_single_test "disable_expression_proj" "ExpressionProjector 비활성화" "SPECTRA_DISABLE_EXPRESSION_PROJ=1"
+run_single_test "disable_expression_proj" "ExpressionProjector 비활성화" "SEQORTH_DISABLE_EXPRESSION_PROJ=1"
 
 echo ""
-echo "테스트 7/7: full_spectra"
-run_single_test "full_spectra" "SPECTRA 전체 활성화" ""
+echo "테스트 7/7: full_seqorth"
+run_single_test "full_seqorth" "Seqorth 전체 활성화" ""
 
 # 리포트 생성
 echo ""
@@ -124,7 +124,7 @@ echo "리포트 생성 중..."
 echo "========================================================================"
 
 cat > "$REPORT_FILE" << 'REPORT_HEADER'
-# SPECTRA 컴포넌트 점검 리포트
+# Seqorth 컴포넌트 점검 리포트
 
 REPORT_HEADER
 
@@ -136,7 +136,7 @@ echo "" >> "$REPORT_FILE"
 # 요약
 passed=0
 failed=0
-for name in baseline_no_spectra disable_expert_dispatch disable_router disable_shared_experts disable_intent_gated disable_expression_proj full_spectra; do
+for name in baseline_no_seqorth disable_expert_dispatch disable_router disable_shared_experts disable_intent_gated disable_expression_proj full_seqorth; do
     [ "${RESULTS[$name]}" == "PASSED" ] && ((passed++))
     [ "${RESULTS[$name]}" == "FAILED" ] && ((failed++))
 done
@@ -158,15 +158,15 @@ echo "| 컴포넌트 | 설명 | 상태 | 소요시간 | 에러 |" >> "$REPORT_FI
 echo "|----------|------|------|----------|------|" >> "$REPORT_FILE"
 
 declare -A DESCS
-DESCS[baseline_no_spectra]="SPECTRA 완전 비활성화"
+DESCS[baseline_no_seqorth]="Seqorth 완전 비활성화"
 DESCS[disable_expert_dispatch]="Expert dispatch 비활성화"
-DESCS[disable_router]="SPECTRARouter 비활성화"
+DESCS[disable_router]="SeqorthRouter 비활성화"
 DESCS[disable_shared_experts]="shared_experts 비활성화"
 DESCS[disable_intent_gated]="IntentGatedContextCell 비활성화"
 DESCS[disable_expression_proj]="ExpressionProjector 비활성화"
-DESCS[full_spectra]="SPECTRA 전체 활성화"
+DESCS[full_seqorth]="Seqorth 전체 활성화"
 
-for name in baseline_no_spectra disable_expert_dispatch disable_router disable_shared_experts disable_intent_gated disable_expression_proj full_spectra; do
+for name in baseline_no_seqorth disable_expert_dispatch disable_router disable_shared_experts disable_intent_gated disable_expression_proj full_seqorth; do
     status="${RESULTS[$name]}"
     error="${ERRORS[$name]}"
     duration="${DURATIONS[$name]}"
@@ -189,12 +189,12 @@ echo "" >> "$REPORT_FILE"
 echo "## 분석" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 
-if [ "${RESULTS[baseline_no_spectra]}" == "PASSED" ]; then
+if [ "${RESULTS[baseline_no_seqorth]}" == "PASSED" ]; then
     echo "### 발견 사항" >> "$REPORT_FILE"
-    echo "- ✅ **SPECTRA 없이 Qwen3 MoE는 정상 작동**" >> "$REPORT_FILE"
+    echo "- ✅ **Seqorth 없이 Qwen3 MoE는 정상 작동**" >> "$REPORT_FILE"
     
-    if [ "${RESULTS[full_spectra]}" == "FAILED" ]; then
-        echo "- ❌ **SPECTRA 전체 활성화 시 에러 발생**" >> "$REPORT_FILE"
+    if [ "${RESULTS[full_seqorth]}" == "FAILED" ]; then
+        echo "- ❌ **Seqorth 전체 활성화 시 에러 발생**" >> "$REPORT_FILE"
         echo "" >> "$REPORT_FILE"
         echo "### 문제 컴포넌트 식별" >> "$REPORT_FILE"
         
@@ -206,7 +206,7 @@ if [ "${RESULTS[baseline_no_spectra]}" == "PASSED" ]; then
     fi
 else
     echo "### ⚠️ 주의" >> "$REPORT_FILE"
-    echo "- baseline 테스트도 실패 → 문제가 SPECTRA 외부에 있을 수 있음" >> "$REPORT_FILE"
+    echo "- baseline 테스트도 실패 → 문제가 Seqorth 외부에 있을 수 있음" >> "$REPORT_FILE"
 fi
 
 echo "" >> "$REPORT_FILE"
@@ -214,7 +214,7 @@ echo "## 권장 사항" >> "$REPORT_FILE"
 echo "" >> "$REPORT_FILE"
 
 for name in disable_expert_dispatch disable_router disable_shared_experts disable_intent_gated disable_expression_proj; do
-    if [ "${RESULTS[$name]}" == "PASSED" ] && [ "${RESULTS[full_spectra]}" == "FAILED" ]; then
+    if [ "${RESULTS[$name]}" == "PASSED" ] && [ "${RESULTS[full_seqorth]}" == "FAILED" ]; then
         echo "### \`$name\` 수정 필요" >> "$REPORT_FILE"
         echo "- **문제 컴포넌트**: ${DESCS[$name]}" >> "$REPORT_FILE"
         echo "- **해결 방안**:" >> "$REPORT_FILE"

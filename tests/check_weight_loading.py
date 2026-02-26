@@ -74,14 +74,14 @@ modeling_utils._find_mismatched_keys = _safe_find_mismatched_keys
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# This import applies the Safe NN init patches from spectra_model.py
-from models.spectra_model import (
-    SPECTRATextConfig, 
-    SPECTRARouter, 
-    SPECTRAExoskeletonMoEInjector
+# This import applies the Safe NN init patches from seqorth_model.py
+from models.seqorth_model import (
+    SeqorthTextConfig, 
+    SeqorthRouter, 
+    SeqorthExoskeletonMoEInjector
 )
 
-def check_spectra_loading():
+def check_seqorth_loading():
     if "LOCAL_RANK" not in os.environ:
         os.environ["LOCAL_RANK"] = os.environ.get("RANK", "0")
     
@@ -92,7 +92,7 @@ def check_spectra_loading():
         format=f'[Rank {local_rank}] %(asctime)s - %(levelname)s - %(message)s',
         stream=sys.stdout
     )
-    logger = logging.getLogger("SPECTRA_Checker")
+    logger = logging.getLogger("SEQORTH_Checker")
 
     if not dist.is_initialized():
         dist.init_process_group(backend="nccl")
@@ -117,8 +117,8 @@ def check_spectra_loading():
                     "Qwen3VLMoeTextExperts",
                     "Qwen3VLMoeVisionPatchMerger",
                     "Qwen3VLMoeVisionPatchEmbed",
-                    "SPECTRAMoE",
-                    "SPECTRARouter"
+                    "SeqorthMoE",
+                    "SeqorthRouter"
                 ]
             }
         },
@@ -138,10 +138,10 @@ def check_spectra_loading():
             device_map=None
         )
         
-        spectra_config = SPECTRATextConfig()
-        spectra_config.hidden_size = 2048 
-        global_router = SPECTRARouter(spectra_config)
-        injector = SPECTRAExoskeletonMoEInjector(spectra_config=spectra_config, global_router=global_router)
+        seqorth_config = SeqorthTextConfig()
+        seqorth_config.hidden_size = 2048 
+        global_router = SeqorthRouter(seqorth_config)
+        injector = SeqorthExoskeletonMoEInjector(seqorth_config=seqorth_config, global_router=global_router)
         model = injector.inject(base_model)
     
     dist.barrier()
@@ -172,4 +172,4 @@ def check_spectra_loading():
         sys.exit(0)
 
 if __name__ == "__main__":
-    check_spectra_loading()
+    check_seqorth_loading()

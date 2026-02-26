@@ -1,19 +1,19 @@
 import torch
 import torch.nn as nn
-from models.spectra_model import SPECTRARouter, ExpressionProjector
-from models.spectra_config import SPECTRATextConfig
+from models.seqorth_model import SeqorthRouter, ExpressionProjector
+from models.seqorth_config import SeqorthTextConfig
 
 def verify_router_fix():
-    print("Testing SPECTRARouter fix...")
+    print("Testing SeqorthRouter fix...")
     
-    config = SPECTRATextConfig()
+    config = SeqorthTextConfig()
     config.hidden_size = 128
     config.n_routed_experts = 8
     config.router_dim = 16
     config.expert_choice_routing = True
     config.capacity_factor = 1.25
     
-    router = SPECTRARouter(config)
+    router = SeqorthRouter(config)
     router.training = True
     
     batch_size = 4

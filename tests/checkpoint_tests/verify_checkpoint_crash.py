@@ -4,8 +4,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch
 import torch.nn as nn
 from torch.utils.checkpoint import checkpoint
-from models.spectra_model import SPECTRARouter, SPECTRAMoE
-from models.spectra_config import SPECTRATextConfig
+from models.seqorth_model import SeqorthRouter, SeqorthMoE
+from models.seqorth_config import SeqorthTextConfig
 
 class DummyExpert(nn.Module):
     def __init__(self, hidden_size):
@@ -15,9 +15,9 @@ class DummyExpert(nn.Module):
         return self.net(x)
 
 def verify_checkpoint_fix():
-    print("Testing SPECTRAMoE Checkpoint Fix...")
+    print("Testing SeqorthMoE Checkpoint Fix...")
     
-    config = SPECTRATextConfig()
+    config = SeqorthTextConfig()
     config.hidden_size = 128
     config.n_routed_experts = 4
     config.router_dim = 16
@@ -27,13 +27,13 @@ def verify_checkpoint_fix():
     config.num_experts_per_tok = 2
     
     # Setup global router
-    router = SPECTRARouter(config)
+    router = SeqorthRouter(config)
     
     # Setup experts
     experts = nn.ModuleList([DummyExpert(config.hidden_size) for _ in range(config.n_routed_experts)])
     
     # Setup MoE
-    moe = SPECTRAMoE(config, experts, router=router)
+    moe = SeqorthMoE(config, experts, router=router)
     moe.training = True
     moe.train()
     
@@ -56,15 +56,15 @@ def verify_checkpoint_fix():
 
     def run_forward(hidden_states):
         # Wrapper to match signature expected by checkpoint
-        # SPECTRAMoE forward: (hidden_states, hn_state)
+        # SeqorthMoE forward: (hidden_states, hn_state)
         return moe(hidden_states)
 
     print("\nRunning Checkpointed Forward + Backward (use_reentrant=False)...")
     try:
         # Run forward with checkpointing
-        # Note: SPECTRAMoE has _gradient_checkpointing_func override usually,
+        # Note: SeqorthMoE has _gradient_checkpointing_func override usually,
         # but here we call checkpoint manually on a wrapper or the module itself.
-        # But wait, SPECTRAMoE disables checkpointing internally via override!
+        # But wait, SeqorthMoE disables checkpointing internally via override!
         # If we wrap it in checkpoint, the override is bypassed because we call checkpoint directly.
         # checkpoint(run_forward, x) calls run_forward inside no_grad (reentrant=False doesn't use no_grad?)
         # With use_reentrant=False, it runs forward, saves inputs.

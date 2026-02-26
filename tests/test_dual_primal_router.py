@@ -28,7 +28,7 @@ import os
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from models.spectra_config import SPECTRATextConfig
+from models.seqorth_config import SeqorthTextConfig
 
 
 class DualPrimalRouter(nn.Module):
@@ -36,7 +36,7 @@ class DualPrimalRouter(nn.Module):
     [Dual-Primal Global Router]
     Implements Online Sinkhorn via Dual Variable Optimization.
     """
-    def __init__(self, config: SPECTRATextConfig, use_momentum=False, **kwargs):
+    def __init__(self, config: SeqorthTextConfig, use_momentum=False, **kwargs):
         super().__init__()
         self.config = config
         self.num_experts = config.n_routed_experts
@@ -216,7 +216,7 @@ class DualPrimalRouter(nn.Module):
         else:
             ortho_loss = torch.tensor(0.0, device=x.device)
 
-        # Output formatting (matching SPECTRARouter interface)
+        # Output formatting (matching SeqorthRouter interface)
         zero = torch.tensor(0.0, device=x.device, requires_grad=True)
         return (
             multiplier, selected_experts, None, probs,
@@ -251,7 +251,7 @@ def verify_dual_primal_router(use_momentum=False, batch_size=128):
     print()
     
     # Create config
-    config = SPECTRATextConfig()
+    config = SeqorthTextConfig()
     config.n_routed_experts = EXPERTS
     config.hidden_size = DIM
     config.router_dim = 64
@@ -516,7 +516,7 @@ def compare_vanilla_vs_momentum():
     print()
     
     # Create configs
-    config = SPECTRATextConfig()
+    config = SeqorthTextConfig()
     config.n_routed_experts = EXPERTS
     config.hidden_size = DIM
     config.router_dim = 64
@@ -658,18 +658,18 @@ def test_forward_ema_duplication_bug():
     """
     [CRITICAL BUG REPRODUCTION TEST]
     
-    This test reproduces the bug in spectra_model.py where CV EMA is updated
+    This test reproduces the bug in seqorth_model.py where CV EMA is updated
     BOTH in forward pass AND backward hook, causing CV to explode.
     
     Problem:
-    - spectra_model.py updates cv_ema and expert_load_ema in forward pass (line 1961, 1964)
+    - seqorth_model.py updates cv_ema and expert_load_ema in forward pass (line 1961, 1964)
     - Then updates them again in backward hook (line 1451, 1474)
     - With gradient checkpointing, forward pass runs multiple times, causing
       multiple EMA updates per backward pass, leading to incorrect CV calculation
     
     This test demonstrates the difference between:
     1. Correct: Only update EMA in backward hook (like test_dual_primal_router.py)
-    2. Buggy: Update EMA in both forward and backward (like spectra_model.py)
+    2. Buggy: Update EMA in both forward and backward (like seqorth_model.py)
     """
     torch.manual_seed(42)
     np.random.seed(42)
@@ -683,14 +683,14 @@ def test_forward_ema_duplication_bug():
     print("=" * 80)
     print("Forward EMA Duplication Bug Reproduction Test")
     print("=" * 80)
-    print("This test demonstrates why spectra_model.py CV explodes:")
+    print("This test demonstrates why seqorth_model.py CV explodes:")
     print("  - Forward pass updates EMA (runs multiple times with checkpointing)")
     print("  - Backward hook also updates EMA")
     print("  - Result: EMA updated multiple times per step -> CV calculation wrong")
     print()
     
     # Create config
-    config = SPECTRATextConfig()
+    config = SeqorthTextConfig()
     config.n_routed_experts = EXPERTS
     config.hidden_size = DIM
     config.router_dim = 64
@@ -701,7 +701,7 @@ def test_forward_ema_duplication_bug():
     # Create two routers: one correct, one buggy
     class BuggyDualPrimalRouter(DualPrimalRouter):
         """
-        Buggy version that updates EMA in forward pass (like spectra_model.py)
+        Buggy version that updates EMA in forward pass (like seqorth_model.py)
         """
         def forward(self, x, hn=None, top_k=2, jitter_eps=0.01, step_frac=0.0, layer_idx=0, **kwargs):
             batch, seq, dim = x.shape
@@ -724,7 +724,7 @@ def test_forward_ema_duplication_bug():
             probs = F.softmax(corrected_logits, dim=-1)
             routing_probs_full = probs.view(batch, seq, self.num_experts)
             
-            # [BUG] Update EMA in forward pass (like spectra_model.py line 1961, 1964)
+            # [BUG] Update EMA in forward pass (like seqorth_model.py line 1961, 1964)
             if self.training:
                 with torch.no_grad():
                     current_load = routing_probs_full.detach().mean(dim=(0, 1))
@@ -855,7 +855,7 @@ def test_forward_ema_duplication_bug():
     
     if b_final_cv > c_final_cv * 1.5:
         print("✅ BUG CONFIRMED: Buggy version has significantly higher CV")
-        print("   This explains why spectra_model.py CV explodes during training!")
+        print("   This explains why seqorth_model.py CV explodes during training!")
     else:
         print("⚠️  Bug not clearly reproduced (may need more steps or different conditions)")
     print()

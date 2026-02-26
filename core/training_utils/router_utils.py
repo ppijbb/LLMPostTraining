@@ -3,7 +3,7 @@ Router parameter utilities for training
 """
 import logging
 from typing import Tuple, List
-from models.spectra_model import SPECTRARouter
+from models.seqorth_model import SeqorthRouter
 
 
 def ensure_router_parameters_trainable(
@@ -32,7 +32,7 @@ def ensure_router_parameters_trainable(
     seen_param_ids = set()
     
     for name, module in actual_model.named_modules():
-        if isinstance(module, (SPECTRARouter)):
+        if isinstance(module, (SeqorthRouter)):
             if context:
                 logger.debug(f"  [{context}] Found router module: {name}")
             

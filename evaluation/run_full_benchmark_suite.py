@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Complete Benchmark Suite for SPECTRA MoE Paper Evaluation
+Complete Benchmark Suite for Seqorth MoE Paper Evaluation
 
 Runs all standard benchmarks:
 - Perplexity (held-out test set)
@@ -223,7 +223,7 @@ def generate_latex_table(results: Dict[str, Any]) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Complete Benchmark Suite for SPECTRA MoE")
+    parser = argparse.ArgumentParser(description="Complete Benchmark Suite for Seqorth MoE")
     parser.add_argument(
         "--model_path",
         type=str,

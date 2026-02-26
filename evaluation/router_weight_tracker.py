@@ -1,8 +1,8 @@
 # coding=utf-8
 """
-Router Weight Tracker for SPECTRA MoE
+Router Weight Tracker for Seqorth MoE
 
-이 모듈은 spectra 모델의 router 가중치를 step별로 tracking하고 분석합니다.
+이 모듈은 seqorth 모델의 router 가중치를 step별로 tracking하고 분석합니다.
 Router 가중치는 다음 두 부분으로 구성됩니다:
 1. load_balancer (GRU): sequential routing을 위한 가중치
 2. expression_projector: orthogonal expression projection을 위한 가중치
@@ -23,7 +23,7 @@ def extract_router_weights(model: nn.Module, actual_weights_dict: Optional[Dict[
     모델에서 모든 router 가중치를 추출합니다.
     
     Args:
-        model: SPECTRA MoE 모델
+        model: Seqorth MoE 모델
         
     Returns:
         Dictionary with structure:
@@ -75,7 +75,7 @@ def extract_router_weights(model: nn.Module, actual_weights_dict: Optional[Dict[
         for attr_name in ['mlp', 'feed_forward', 'ffn', 'ffw', 'moe']:
             if hasattr(layer, attr_name):
                 candidate = getattr(layer, attr_name)
-                # SPECTRABlock인지 확인
+                # SeqorthBlock인지 확인
                 if hasattr(candidate, 'router') and hasattr(candidate.router, 'load_balancer'):
                     moe_block = candidate
                     break
@@ -407,7 +407,7 @@ class RouterWeightTracker:
         현재 step의 router 가중치를 tracking합니다.
         
         Args:
-            model: SPECTRA MoE 모델
+            model: Seqorth MoE 모델
             step: 현재 step 번호
             global_step: 전역 step 번호 (None이면 step 사용)
             actual_weights_dict: Forward hook에서 추적한 실제 사용되는 weight 딕셔너리

@@ -1,14 +1,14 @@
 =================================================================
-METHOD: SPECTRA ROUTING
+METHOD: Seqorth ROUTING
 =================================================================
 
-**3. SPECTRA: A Routing Methodology Based on Context, Orthogonality, and Optimal Transport**
+**3. Seqorth: A Routing Methodology Based on Context, Orthogonality, and Optimal Transport**
 
-This section details the architecture and core ideas of our proposed routing mechanism, SPECTRA (Sinkhorn Projected Experts for Consistent TRAjectory routing). SPECTRA is a routing framework that combines context-aware sequential routing with orthogonality constraints and OSR (Orthogonal Sinkhorn Routing) that structurally enforce functional specialization among experts while ensuring optimal load balancing.
+This section details the architecture and core ideas of our proposed routing mechanism, Seqorth (Sinkhorn Projected Experts for Consistent TRAjectory routing). Seqorth is a routing framework that combines context-aware sequential routing with orthogonality constraints and OSR (Orthogonal Sinkhorn Routing) that structurally enforce functional specialization among experts while ensuring optimal load balancing.
 
-**3.1. SPECTRA Architectural Overview**
+**3.1. Seqorth Architectural Overview**
 
-When given an input token `x`, the SPECTRA router selects the optimal `k` experts through four key components:
+When given an input token `x`, the Seqorth router selects the optimal `k` experts through four key components:
 
 1.  **GRU-based Sequential Router:** Generates dynamic routing representations by understanding the context of the input sequence.
 2.  **Orthogonal Expression Projector:** Projects the input token into a low-dimensional space representing the functional 'expression' of the experts.
@@ -17,7 +17,7 @@ When given an input token `x`, the SPECTRA router selects the optimal `k` expert
 
 **3.2. Sequential Routing for Context Awareness**
 
-Unlike conventional routers that process each token independently, SPECTRA utilizes a GRU (Gated Recurrent Unit) to leverage previous information from the sequence:
+Unlike conventional routers that process each token independently, Seqorth utilizes a GRU (Gated Recurrent Unit) to leverage previous information from the sequence:
 
     r_t, h_t = GRU(x_t, h_{t-1})
 
@@ -25,13 +25,13 @@ Here, `x_t` is the token embedding, `h_{t-1}` is the hidden state from the previ
 
 **3.3. Orthogonality Constraints for Expert Specialization**
 
-SPECTRA employs orthogonality constraints in two stages:
+Seqorth employs orthogonality constraints in two stages:
 
 **1) Initialization & Projection:**
 The expression projector `P_expr` is initialized with orthogonal weights (`nn.init.orthogonal_`). This provides a good starting point where experts cover distinct subspaces.
 
 **2) Dynamic Representation Orthogonality (Soft Orthogonality):**
-Instead of just constraining static weights, we apply an **Enhanced Soft Orthogonality** loss to the *dynamic expert representations* (averaged over the batch). This ensures that the actual *activations* of experts remain distinct. We use a combination of Frobenius norm and Spectral norm (SRIP) to penalize the correlation between expert centroids:
+Instead of just constraining static weights, we apply an **Enhanced Soft Orthogonality** loss to the *dynamic expert representations* (averaged over the batch). This ensures that the actual *activations* of experts remain distinct. We use a combination of Frobenius norm and Seqorthl norm (SRIP) to penalize the correlation between expert centroids:
 
     L_ortho = 0.7 * ||G - I||²_F + 0.3 * σ(G - I)²
 
@@ -39,7 +39,7 @@ where `G` is the Gram matrix of batch-averaged expert representations and `σ` d
 
 **3.4. OSR (Orthogonal Sinkhorn Routing)**
 
-To achieve optimal load balancing, SPECTRA employs **OSR**, a pure mathematical approach using a repulsive cost function and Sinkhorn-Knopp optimization.
+To achieve optimal load balancing, Seqorth employs **OSR**, a pure mathematical approach using a repulsive cost function and Sinkhorn-Knopp optimization.
 
 **3.4.1. Repulsive Cost Function**
 
@@ -78,11 +78,11 @@ The total loss function is:
 -   `L_entropy`: Minimizes routing entropy (`-Σ p log p`) to encourage confident selection (sharpening).
 -   `L_ortho`: The enhanced soft orthogonality loss described in 3.3.
 
-**Key Simplification:** SPECTRA does **not** require explicit auxiliary load-balancing losses (like the coefficient-heavy losses in Switch Transformer). Sinkhorn structurally enforces balance, and the repulsive cost structurally enforces separation.
+**Key Simplification:** Seqorth does **not** require explicit auxiliary load-balancing losses (like the coefficient-heavy losses in Switch Transformer). Sinkhorn structurally enforces balance, and the repulsive cost structurally enforces separation.
 
 **3.6. Summary and Comparison**
 
-We compare SPECTRA with representative MoE routing mechanisms, including both foundational methods and state-of-the-art approaches from 2024-2025.
+We compare Seqorth with representative MoE routing mechanisms, including both foundational methods and state-of-the-art approaches from 2024-2025.
 
 | Method | Sequential Context | Orthogonality Enforcement | Load Balancing Mechanism | Routing Complexity |
 | :--- | :---: | :--- | :--- | :---: |
@@ -90,11 +90,11 @@ We compare SPECTRA with representative MoE routing mechanisms, including both fo
 | Expert Choice [Zhou et al., 2022] | ✗ | None | Implicit (Experts choose tokens) | O(d·E) |
 | OMoE [Feng et al., 2025] | ✗ | Auxiliary Loss (Weight-level) | Auxiliary Loss | O(d·E) |
 | RoMA [Ren et al., 2025] | ✗ | Manifold Alignment Loss | Auxiliary Loss | O(d·E) |
-| **SPECTRA (Ours)** | **✓** (GRU) | **Structural** (OSR Repulsive Cost) | **Optimal Transport** (Sinkhorn) | **O(d·E + T·N·E)** |
+| **Seqorth (Ours)** | **✓** (GRU) | **Structural** (OSR Repulsive Cost) | **Optimal Transport** (Sinkhorn) | **O(d·E + T·N·E)** |
 
 *Key Differences:*
-1.  **Structural Orthogonality:** Unlike OMoE/RoMA which rely on competing auxiliary losses, SPECTRA enforces separation directly in the routing transport cost via repulsion.
-2.  **Context Awareness:** SPECTRA is unique in using sequential state (GRU) to maintain routing consistency across the sequence.
+1.  **Structural Orthogonality:** Unlike OMoE/RoMA which rely on competing auxiliary losses, Seqorth enforces separation directly in the routing transport cost via repulsion.
+2.  **Context Awareness:** Seqorth is unique in using sequential state (GRU) to maintain routing consistency across the sequence.
 3.  **Parameter-free Balancing:** OSR achieves balance via Sinkhorn normalization without tuning complex load-balance loss coefficients.
 
-SPECTRA combines these features to overcome the limitations of prior work, offering a robust, specialized, and balanced routing mechanism.
+Seqorth combines these features to overcome the limitations of prior work, offering a robust, specialized, and balanced routing mechanism.

@@ -51,11 +51,11 @@ For each sweep (defined in `05_experiments.txt`), we will include:
 (2D visualization of expert embeddings)
 
 Switch Top-2:    Experts cluster in 2-3 groups (redundancy)
-SPECTRA (Ours): Experts spread uniformly in embedding space (diversity)
+Seqorth (Ours): Experts spread uniformly in embedding space (diversity)
 -------------------------------------------------------------------
 
 **Analysis**:
-SPECTRA's orthogonality constraints result in well-separated expert representations. Switch routing shows clustering, indicating functional redundancy.
+Seqorth's orthogonality constraints result in well-separated expert representations. Switch routing shows clustering, indicating functional redundancy.
 
 
 **Domain specialization discovery (to be reported)**:
@@ -75,7 +75,7 @@ We will report ablations primarily in routing-metric space first (e.g., how -GRU
 Variant                        | Expert   | Expert    | Gram Ortho | Collapse
                                | Entropy  | Overlap   | (×10⁻²)    | Rate
 -------------------------------|----------|-----------|------------|----------
-SPECTRA-Full                  | X.XX     | XX.X%     | XX.X       | 0%
+Seqorth-Full                  | X.XX     | XX.X%     | XX.X       | 0%
   -Expression                  | X.XX     | XX.X%     | XX.X       | XX%
   -GRU                         | X.XX     | XX.X%     | XX.X       | XX%
   -SpecialityPenalty           | X.XX     | XX.X%     | XX.X       | XX%
@@ -95,7 +95,7 @@ SPECTRA-Full                  | X.XX     | XX.X%     | XX.X       | 0%
 (Line plots showing training loss over steps for each variant)
 
 Key Observations:
-- SPECTRA-Full converges fastest
+- Seqorth-Full converges fastest
 - -GRU variant shows higher variance in loss
 - -OrthoConstraint shows slower convergence
 - All variants stabilize after [XX]K steps
@@ -106,13 +106,13 @@ Key Observations:
 -------------------------------------------------------------------
 (Stacked area chart showing expert usage percentage over training steps)
 
-SPECTRA-Full:       Gradual specialization, stable by [XX]K steps
+Seqorth-Full:       Gradual specialization, stable by [XX]K steps
 -SpecialityPenalty:  Slower specialization, stable by [XX]K steps
 -OrthoConstraint:    Expert collapse at [XX]K steps, partial recovery
 -------------------------------------------------------------------
 
 **Analysis**:
-SPECTRA achieves stable expert specialization faster than ablation variants. Orthogonality constraints prevent early expert collapse that occurs in variants without them.
+Seqorth achieves stable expert specialization faster than ablation variants. Orthogonality constraints prevent early expert collapse that occurs in variants without them.
 
 
 -------------------------------------------------------------------
@@ -150,7 +150,7 @@ Total                        | X.XX      | XX.X         | 100%
 
 [TABLE 10: Performance Across Model Sizes]
 -------------------------------------------------------------------
-Base Model      | Switch Top-2 | SPECTRA | Improvement
+Base Model      | Switch Top-2 | Seqorth | Improvement
                 | Avg Score    | Avg Score| (%)
 ----------------|--------------|----------|-------------
 GPT-2-Medium    | XX.X         | XX.X     | +X.X%
@@ -161,15 +161,15 @@ Scaling Trend   | —            | —        | Increasing
 -------------------------------------------------------------------
 
 **Key Findings**:
-- Benefits of SPECTRA increase with model size
+- Benefits of Seqorth increase with model size
 - Improvement: GPT-2 (+[X]%) < LLaMA-7B (+[X]%) < Mixtral-8x7B (+[X]%)
 - Larger models have more capacity to benefit from expert specialization
-- Mixtral router replacement shows that SPECTRA can improve existing MoE models
+- Mixtral router replacement shows that Seqorth can improve existing MoE models
 
 
 [TABLE 11: Performance vs. Number of Experts]
 -------------------------------------------------------------------
-# Experts (E) | Switch Top-2 | SPECTRA | Expert    | Gram Ortho
+# Experts (E) | Switch Top-2 | Seqorth | Expert    | Gram Ortho
               | Avg Score    | Avg Score| Entropy   | (×10⁻²)
 --------------|--------------|----------|-----------|------------
 4             | XX.X         | XX.X     | X.XX      | XX.X
@@ -181,10 +181,10 @@ Scaling Trend | Sublinear    | Linear   | Increases | Maintained
 -------------------------------------------------------------------
 
 **Key Findings**:
-- SPECTRA scales better with more experts than Switch routing
+- Seqorth scales better with more experts than Switch routing
 - Switch Top-2 shows diminishing returns beyond 16 experts (expert collapse)
-- SPECTRA maintains performance gains up to 32 experts
-- Expert entropy increases with E for SPECTRA (good load balance)
+- Seqorth maintains performance gains up to 32 experts
+- Expert entropy increases with E for Seqorth (good load balance)
 - Gram orthogonality is maintained even with 32 experts
 
 
@@ -201,13 +201,13 @@ Method              | Routing        | Expert Usage  | Expert Rank
 Switch Top-1        | XX.X           | X.XX          | X.XX
 Switch Top-2        | XX.X           | X.XX          | X.XX
 Expert Choice       | XX.X           | X.XX          | X.XX
-SPECTRA (Ours)     | XX.X           | X.XX          | X.XX
+Seqorth (Ours)     | XX.X           | X.XX          | X.XX
 --------------------|----------------|---------------|---------------
 Ideal               | 100            | 0.00          | 1.00
 -------------------------------------------------------------------
 
 **Key Findings**:
-- SPECTRA shows [XX]% routing consistency vs. [YY]% for Switch Top-2
+- Seqorth shows [XX]% routing consistency vs. [YY]% for Switch Top-2
 - Expert usage variance is [X]× lower than Switch routing
 - Rank correlation is near-perfect (τ = [X.XX]), indicating stable specialization
 - Stability improves over training as orthogonality constraints take effect
@@ -219,11 +219,11 @@ Ideal               | 100            | 0.00          | 1.00
 
 All Methods: Initial high entropy (exploration)
 Switch:      Converges to low entropy (collapse)
-SPECTRA:    Maintains moderate entropy (stable specialization)
+Seqorth:    Maintains moderate entropy (stable specialization)
 -------------------------------------------------------------------
 
 **Analysis**:
-SPECTRA balances exploration and exploitation better than Switch routing. Initial exploration discovers specializations, then stabilizes without collapsing to few experts.
+Seqorth balances exploration and exploitation better than Switch routing. Initial exploration discovers specializations, then stabilizes without collapsing to few experts.
 
 
 -------------------------------------------------------------------
@@ -239,13 +239,13 @@ Switch Top-2 Routing:
   Token 11-20:   Expert 2 (55%), Expert 7 (45%)  [Mixed routing]
   Token 21-30:   Expert 0 (70%), Expert 2 (30%)  [Code expert activated]
 
-SPECTRA Routing:
+Seqorth Routing:
   Token 1-10:    Expert 0 (85%), Expert 6 (15%)  [Code expert from start]
   Token 11-20:   Expert 0 (90%), Expert 1 (10%)  [Consistent code expert]
   Token 21-30:   Expert 0 (75%), Expert 1 (25%)  [Code + math experts]
 
 Analysis:
-SPECTRA identifies code context earlier and routes consistently to code expert (E0). Math expert (E1) is activated for Fibonacci logic.
+Seqorth identifies code context earlier and routes consistently to code expert (E0). Math expert (E1) is activated for Fibonacci logic.
 -------------------------------------------------------------------
 
 
@@ -257,13 +257,13 @@ Switch Top-2 Routing:
   History part:  Expert 3 (50%), Expert 7 (50%)  [Mixed routing]
   Physics part:  Expert 2 (60%), Expert 5 (40%)  [No clear specialization]
 
-SPECTRA Routing:
+Seqorth Routing:
   History part:  Expert 3 (80%), Expert 7 (20%)  [History expert]
   Transition:    Expert 3 (40%), Expert 2 (60%)  [Smooth transition]
   Physics part:  Expert 2 (85%), Expert 1 (15%)  [Science expert]
 
 Analysis:
-SPECTRA shows smooth transition between history and science domains, with clear expert specialization for each domain.
+Seqorth shows smooth transition between history and science domains, with clear expert specialization for each domain.
 -------------------------------------------------------------------
 
 
@@ -300,13 +300,13 @@ SPECTRA shows smooth transition between history and science domains, with clear 
 -------------------------------------------------------------------
 Comparison                          | p-value    | Significant?
 ------------------------------------|------------|-------------
-SPECTRA vs. Switch Top-2           | < 0.001    | Yes (***)
-SPECTRA vs. Expert Choice          | < 0.01     | Yes (**)
-SPECTRA vs. Dense (gap closure)    | < 0.001    | Yes (***)
-SPECTRA-Full vs. -Expression       | < 0.05     | Yes (*)
-SPECTRA-Full vs. -GRU              | < 0.001    | Yes (***)
-SPECTRA-Full vs. -SpecialityPen    | < 0.01     | Yes (**)
-SPECTRA-Full vs. -OrthoConstraint  | < 0.01     | Yes (**)
+Seqorth vs. Switch Top-2           | < 0.001    | Yes (***)
+Seqorth vs. Expert Choice          | < 0.01     | Yes (**)
+Seqorth vs. Dense (gap closure)    | < 0.001    | Yes (***)
+Seqorth-Full vs. -Expression       | < 0.05     | Yes (*)
+Seqorth-Full vs. -GRU              | < 0.001    | Yes (***)
+Seqorth-Full vs. -SpecialityPen    | < 0.01     | Yes (**)
+Seqorth-Full vs. -OrthoConstraint  | < 0.01     | Yes (**)
 -------------------------------------------------------------------
 
 Legend: *** p<0.001, ** p<0.01, * p<0.05
@@ -318,7 +318,7 @@ Legend: *** p<0.001, ** p<0.01, * p<0.05
 6.10 SUMMARY OF KEY RESULTS
 -------------------------------------------------------------------
 
-✓ H1 (Task Performance): Confirmed - SPECTRA outperforms Switch routing by [X.X]% on average
+✓ H1 (Task Performance): Confirmed - Seqorth outperforms Switch routing by [X.X]% on average
 ✓ H2 (Expert Specialization): Confirmed - [XX]% lower expert overlap, [XX]% more orthogonal
 ✓ H3 (Routing Stability): Confirmed - [XX]% higher routing consistency
 ✓ H4 (Computational Efficiency): Confirmed - Only [X]% overhead vs. Switch routing
@@ -326,5 +326,5 @@ Legend: *** p<0.001, ** p<0.01, * p<0.05
 ✓ H6 (Model Scaling): Confirmed - Benefits increase with model size ([X]% → [Y]% → [Z]%)
 ✓ H7 (Specialized Domains): Confirmed - [X]× larger gains on code/math/science tasks
 
-**Overall**: SPECTRA successfully addresses expert collapse and specialization challenges while maintaining computational efficiency. All hypotheses are confirmed with statistical significance.
+**Overall**: Seqorth successfully addresses expert collapse and specialization challenges while maintaining computational efficiency. All hypotheses are confirmed with statistical significance.
 

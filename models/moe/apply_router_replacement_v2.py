@@ -2,7 +2,7 @@
 import os
 import re
 
-target_file = '/home/conan/workspace/llm_training/models/spectra_model.py'
+target_file = '/home/conan/workspace/llm_training/models/seqorth_model.py'
 new_code_file = '/home/conan/workspace/llm_training/models/new_router_code_v2.py'
 
 # Read original file
@@ -14,14 +14,14 @@ with open(new_code_file, 'r') as f:
     new_code = f.read()
 
 # Identify the range to replace
-# We look for "class SPECTRARouter(nn.Module):" and "iterations = 0"
+# We look for "class SeqorthRouter(nn.Module):" and "iterations = 0"
 # Based on previous turn and file operations.
 
 start_idx = -1
 end_idx = -1
 
 for i, line in enumerate(lines):
-    if "class SPECTRARouter(nn.Module):" in line:
+    if "class SeqorthRouter(nn.Module):" in line:
         start_idx = i
     if "iterations = 0" in line:
         end_idx = i
@@ -44,4 +44,4 @@ new_lines.extend(lines[end_idx:])
 with open(target_file, 'w') as f:
     f.writelines(new_lines)
 
-print("Successfully replaced SPECTRARouter class with new simplified version.")
+print("Successfully replaced SeqorthRouter class with new simplified version.")
