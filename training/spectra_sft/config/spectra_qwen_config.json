@@ -72,7 +72,15 @@
       "trust_region_coef": 0.1,
       "reassignment_soften_threshold": 500,
       "alf_gamma": 0.01,
-      "alf_bias_max": 10.0
+      "alf_bias_max": 10.0,
+      "soft_load_blend_alpha": 0.5,
+      "soft_barrier_coef_pre": 0.2,
+      "soft_barrier_cv_scale": 0.5,
+      "bias_delta_lpf_alpha": 0.7,
+      "error_clamp_c": 2.0,
+      "intent_damp_thresh": 0.5,
+      "intent_damp_min": 0.6,
+      "intent_damp_k": 0.15
     }
   },
   "_meta": {

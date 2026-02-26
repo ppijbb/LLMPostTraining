@@ -54,9 +54,12 @@ def calculate_cv(usage_counts):
     return sigma / mu
 
 def calculate_maxvio(usage_counts, target_usage):
+    """MaxVio = max(|load_i - target|) / target, aligned with router/callback."""
     if len(usage_counts) == 0: return 0.0
-    violations = (usage_counts - target_usage) / target_usage
-    return np.max(np.maximum(0, violations))
+    usage = np.array(usage_counts, dtype=np.float64)
+    target_safe = max(float(target_usage), 1e-8)
+    deviations = np.abs(usage - target_safe)
+    return float(np.max(deviations) / target_safe)
 
 def main():
     parser = argparse.ArgumentParser()

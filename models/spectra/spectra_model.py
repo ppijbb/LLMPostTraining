@@ -1068,6 +1068,19 @@ class SPECTRARouter(nn.Module):
         # Quality-aware trust region (limit step-to-step load change)
         self.register_buffer("_last_load_frac", torch.zeros(self.num_experts))
         self._trust_region_coef = getattr(config, "trust_region_coef", 0.1)
+        # Soft/topk load blend for control-signal alignment with loss
+        self._soft_load_blend_alpha = getattr(config, "soft_load_blend_alpha", 0.5)
+        # Soft dual barrier (pre-topk continuous penalty; no hard reassign)
+        self._soft_barrier_coef_pre = getattr(config, "soft_barrier_coef_pre", 0.2)
+        self._soft_barrier_cv_scale = getattr(config, "soft_barrier_cv_scale", 0.5)
+        # Magnitude-aware bias update EMA
+        self.register_buffer("_prev_bias_delta", torch.zeros(self.num_experts))
+        self._bias_delta_lpf_alpha = getattr(config, "bias_delta_lpf_alpha", 0.7)
+        self._error_clamp_c = getattr(config, "error_clamp_c", 2.0)
+        # Intent safe damping when imbalance high (floor preserved)
+        self._intent_damp_thresh = getattr(config, "intent_damp_thresh", 0.5)
+        self._intent_damp_min = getattr(config, "intent_damp_min", 0.6)
+        self._intent_damp_k = getattr(config, "intent_damp_k", 0.15)
         # Deferred stats for flush (hard overflow / reassignment)
         self._overflow_count_per_layer: Dict[int, int] = {}
         self._reassignment_count_per_layer: Dict[int, int] = {}
@@ -1146,11 +1159,7 @@ class SPECTRARouter(nn.Module):
             self.training_step.add_(1)
 
     def flush_bias_updates(self):
-        """Apply deferred per-layer state updates (EMA for monitoring + pure ALF sign-based bias).
-
-        DeepSeek-style Auxiliary-Loss-Free: single expert_bias updated by sign(load_error) * gamma.
-        No dual_lambda, no hysteresis/proportional correction/intent damping (removed to avoid conflict).
-        """
+        """Apply deferred per-layer state: EMA monitoring + magnitude-aware bias/dual with low-pass."""
         with torch.no_grad():
             # 1. Step increment
             self.training_step.add_(1)
@@ -1167,21 +1176,34 @@ class SPECTRARouter(nn.Module):
                 self.max_vio_ema.mul_(self.max_vio_ema_alpha).add_(avg_mvio * (1.0 - self.max_vio_ema_alpha))
                 mvio_obs.clear()
 
-            # 3. Pure sign-based bias update (ALF)
+            # 3. Magnitude-aware bias + dual update (low-pass smoothed)
             load_frac_map = self._load_frac_per_layer
             if load_frac_map:
                 layers_sorted = sorted(load_frac_map.keys())
                 stacked = torch.stack([load_frac_map[i] for i in layers_sorted], dim=0)
                 mean_load_frac = stacked.mean(dim=0)
-                mean_val = mean_load_frac.mean()
-                error = mean_load_frac - mean_val
+                E = mean_load_frac.size(0)
+                target = 1.0 / E
+                error = mean_load_frac - target
+                target_safe = max(target, 1e-8)
                 gamma = self._alf_gamma
-                self.expert_bias.add_(gamma * error.sign().to(self.expert_bias.dtype))
+                c = self._error_clamp_c
+                delta_raw = gamma * (error / target_safe).clamp(-c, c).to(self.expert_bias.dtype)
+                alpha_lpf = self._bias_delta_lpf_alpha
+                delta_smooth = alpha_lpf * self._prev_bias_delta + (1.0 - alpha_lpf) * delta_raw
+                self._prev_bias_delta.copy_(delta_smooth)
+                self.expert_bias.add_(delta_smooth)
                 self.expert_bias.clamp_(min=-self._alf_bias_max, max=self._alf_bias_max)
+                # Dual: magnitude-aware increase for over-target experts (low-pass)
+                eta = self._dual_eta_base
+                excess = (mean_load_frac - target).clamp(min=0.0)
+                dual_delta = eta * excess.to(self.dual_lambda.dtype)
+                self.dual_lambda.add_(dual_delta)
+                self.dual_lambda.clamp_(min=0.0, max=self._dual_lambda_max)
                 self._last_load_frac.copy_(mean_load_frac)
                 load_frac_map.clear()
 
-            # Clear deferred maps not used by ALF (avoid leak)
+            # Clear deferred maps (avoid leak)
             if self._delta_per_layer:
                 self._delta_per_layer.clear()
             if self._intent_desired_per_layer:
@@ -1237,7 +1259,17 @@ class SPECTRARouter(nn.Module):
         codebook = self.expert_codebook.to(x.dtype)
         codes_norm = F.normalize(codebook, p=2, dim=1)
         semantic_logits = F.linear(x_norm, codes_norm)
-        logits = semantic_logits + priority_scores
+        # Intent-safe damping: reduce intent contribution when cv/maxvio above threshold (floor preserved)
+        intent_scale = 1.0
+        if self.training:
+            cv_snap = float(self.cv_ema.clamp(max=2.0).item())
+            mvio_snap = float(self.max_vio_ema.clamp(max=2.0).item())
+            if cv_snap > self._intent_damp_thresh or mvio_snap > self._intent_damp_thresh:
+                intent_scale = max(
+                    self._intent_damp_min,
+                    1.0 - self._intent_damp_k * (cv_snap + mvio_snap),
+                )
+        logits = semantic_logits + intent_scale * priority_scores
 
         # ----------------------------------------------------------------
         # 2b. Intent control signals (read-only, no mutation)
@@ -1280,9 +1312,15 @@ class SPECTRARouter(nn.Module):
             logits_norm = logits_norm + torch.empty_like(logits_norm).uniform_(-jitter_eps, jitter_eps, generator=gen)
 
         # ----------------------------------------------------------------
-        # 4. Pre-TopK: unified bias only (DeepSeek ALF; dual_lambda removed to avoid conflict)
+        # 4. Pre-TopK: bias + dual_lambda + soft dual barrier (no hard reassign dependency)
         # ----------------------------------------------------------------
-        biased_logits = logits_norm + self.expert_bias.unsqueeze(0)
+        with torch.no_grad():
+            # Soft barrier: continuous penalty for over-target experts (pre-topk)
+            inv_E = 1.0 / max(1, E)
+            over_target = (self._last_load_frac - inv_E).clamp(min=0.0)
+            cv_scale = (1.0 + self._soft_barrier_cv_scale * self.cv_ema.clamp(max=2.0)).item()
+            barrier = self._soft_barrier_coef_pre * cv_scale * F.softplus(over_target.to(logits_norm.device))
+        biased_logits = logits_norm + self.expert_bias.unsqueeze(0) - self.dual_lambda.unsqueeze(0) - barrier.unsqueeze(0)
 
         if self._hard_capacity_enabled and not is_dummy_batch:
             with torch.no_grad():
@@ -1291,43 +1329,55 @@ class SPECTRARouter(nn.Module):
                 topk_indices, topk_weights, local_load, reassignment_count = self._hard_capacity_assign(
                     biased_logits, N, E, k, intent_expert_scores_flat, intent_strength_flat
                 )
-            load_frac = local_load / (local_load.sum() + 1e-6)
+                # Aligned load: soft + topk blend for control-signal consistency with loss
+                soft_load = F.softmax(biased_logits, dim=-1).mean(dim=0)
+                topk_frac = local_load / (local_load.sum() + 1e-6)
+                load_frac = (
+                    self._soft_load_blend_alpha * soft_load
+                    + (1.0 - self._soft_load_blend_alpha) * topk_frac
+                )
             self._load_frac_per_layer[layer_idx] = load_frac.detach().clone()
             self._reassignment_count_per_layer[layer_idx] = reassignment_count
         else:
             with torch.no_grad():
+                # Single top-k for both routing and load observation (tie-break consistent)
+                topk_weights, topk_indices = torch.topk(biased_logits, k=k, dim=-1)
                 if is_dummy_batch:
                     local_load = torch.zeros(E, device=x.device, dtype=biased_logits.dtype)
                 else:
-                    _, topk_for_load = torch.topk(biased_logits, k=k, dim=-1)
-                    topk_flat = topk_for_load.reshape(-1)
+                    topk_flat = topk_indices.reshape(-1)
                     local_load = torch.zeros(E, device=x.device, dtype=biased_logits.dtype)
-                    local_load.scatter_add_(0, topk_flat, torch.ones_like(topk_flat, dtype=biased_logits.dtype))
-
-            if not is_dummy_batch:
-                total_load = local_load.sum() + 1e-6
-                load_frac = local_load / total_load
-                self._load_frac_per_layer[layer_idx] = load_frac.detach().clone()
-
-            topk_weights, topk_indices = torch.topk(biased_logits, k=k, dim=-1)
+                    local_load.scatter_add_(
+                        0, topk_flat, torch.ones_like(topk_flat, dtype=biased_logits.dtype)
+                    )
+                if not is_dummy_batch:
+                    soft_load = F.softmax(biased_logits, dim=-1).mean(dim=0)
+                    topk_frac = local_load / (local_load.sum() + 1e-6)
+                    load_frac = (
+                        self._soft_load_blend_alpha * soft_load
+                        + (1.0 - self._soft_load_blend_alpha) * topk_frac
+                    )
+                    self._load_frac_per_layer[layer_idx] = load_frac.detach().clone()
 
         # ----------------------------------------------------------------
-        # 5b. Deferred state observations (overwrite per layer_idx, no in-place EMA mutation)
+        # 5b. Deferred state observations (KPI from aligned load_frac when stored)
         # ----------------------------------------------------------------
         if self.training and not is_dummy_batch:
             with torch.no_grad():
-                total_load = local_load.sum()
-                if total_load > 0:
+                if layer_idx in self._load_frac_per_layer:
+                    expert_dist = self._load_frac_per_layer[layer_idx]
+                else:
+                    total_load = local_load.sum() + 1e-6
                     expert_dist = local_load / total_load
-                    mean_p = expert_dist.mean()
-                    var_p = expert_dist.var(unbiased=False)
-                    current_cv = (var_p.sqrt() / (mean_p + 1e-6)).item()
-                    target_col = total_load / E
-                    target_safe = max(float(target_col.item()), 1e-8)
-                    col_vio_abs = (local_load - target_col).abs().max().item()
-                    col_vio_ratio = col_vio_abs / target_safe
-                    self._cv_per_layer[layer_idx] = current_cv
-                    self._maxvio_per_layer[layer_idx] = col_vio_ratio
+                mean_p = expert_dist.mean()
+                var_p = expert_dist.var(unbiased=False)
+                current_cv = (var_p.sqrt() / (mean_p + 1e-6)).item()
+                target_col = (1.0 / E) * expert_dist.sum()
+                target_safe = max(float(target_col.item()), 1e-8)
+                col_vio_abs = (expert_dist - (1.0 / E)).abs().max().item()
+                col_vio_ratio = col_vio_abs / (1.0 / E + 1e-8)
+                self._cv_per_layer[layer_idx] = current_cv
+                self._maxvio_per_layer[layer_idx] = col_vio_ratio
 
         if self.training:
             with torch.no_grad():
