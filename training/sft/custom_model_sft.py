@@ -44,10 +44,10 @@ from data.multi_domain_sft_dataset import get_multi_domain_sft_dataset, create_s
 from core.training_utils.utils import format_parameters, load_config, setup_deepspeed_environment
 from core.optimizers.custom_optimizers import get_custom_optimizer
 from core.optimizers.deepspeed_optimizer_registry import register_custom_optimizers
-from eval.callbacks import ModelEvalCallback, SpecHornScheduler
-from eval.ifeval_callback import IFEvalCallback
-from eval.moe_monitoring_callback import create_moe_callback_for_transformers
-from eval.router_weight_callback import RouterWeightTrackingCallback
+from evaluation.callbacks import ModelEvalCallback, SpecHornScheduler
+from evaluation.ifeval_callback import IFEvalCallback
+from evaluation.moe_monitoring_callback import create_moe_callback_for_transformers
+from evaluation.router_weight_callback import RouterWeightTrackingCallback
 
 # Register custom optimizers with DeepSpeed
 register_custom_optimizers()

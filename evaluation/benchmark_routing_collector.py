@@ -23,7 +23,7 @@ import os
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from eval.seqorth_analysis import SeqorthAnalyzer
+from evaluation.seqorth_analysis import SeqorthAnalyzer
 
 
 class BenchmarkRoutingCollector:

@@ -19,7 +19,7 @@ import os
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from eval.benchmark_routing_collector import BenchmarkRoutingCollector
+from evaluation.benchmark_routing_collector import BenchmarkRoutingCollector
 
 
 class RoutingMetricsModelWrapper:

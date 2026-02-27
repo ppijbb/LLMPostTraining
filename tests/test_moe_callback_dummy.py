@@ -17,7 +17,7 @@ import time
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from eval.moe_monitoring_callback import create_moe_callback_for_transformers
+from evaluation.moe_monitoring_callback import create_moe_callback_for_transformers
 from transformers import Trainer, TrainingArguments, TrainerCallback
 from transformers import AutoTokenizer
 from datasets import Dataset

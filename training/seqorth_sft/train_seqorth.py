@@ -598,12 +598,12 @@ from core.training_utils import (
     ModulesToSaveSyncCallback
 )
 
-from eval.moe_monitoring_callback import TorchMoECallback
-from eval.callbacks import ModelEvalCallback
+from evaluation.moe_monitoring_callback import TorchMoECallback
+from evaluation.callbacks import ModelEvalCallback
 # IFEval is now integrated into ModelEvalCallback - no separate callback needed
-# from eval.ifeval_callback import IFEvalCallback
-from eval.moe_monitoring_callback import create_moe_callback_for_transformers
-from eval.router_weight_callback import RouterWeightTrackingCallback
+# from evaluation.ifeval_callback import IFEvalCallback
+from evaluation.moe_monitoring_callback import create_moe_callback_for_transformers
+from evaluation.router_weight_callback import RouterWeightTrackingCallback
 
 # --- Additional Global Imports (moved from local imports) ---
 from deepspeed.runtime.zero.stage3 import DeepSpeedZeroOptimizer_Stage3
@@ -2254,35 +2254,18 @@ def main(
             else:
                  logger.warning(f"  ⚠️  Could not find 'layers' for Leaf Module detection! Model keys: {list(model.__dict__.keys()) if hasattr(model, '__dict__') else 'N/A'}")
             
-            # 2. Identify Vision Block Class (if MoE) - Deep search
-            visual = None
-            if hasattr(model, "visual"): visual = model.visual
-            elif hasattr(model, "model") and hasattr(model.model, "visual"): visual = model.model.visual
-            elif hasattr(model, "vision_tower"): visual = model.vision_tower
-            
-            if visual and hasattr(visual, "blocks") and len(visual.blocks) > 0:
-                 vision_cls = type(visual.blocks[0])
-                 leaf_classes.add(vision_cls)
-                 logger.info(f"  🍃 Identified Vision Block Class: {vision_cls.__name__}")
-            
-            # 3. Explicitly add Shared Global/Specific classes for ZeRO-3 stability
-            # NOTE: SeqorthRouter is REMOVED from leaf modules to prevent race conditions
-            # during backward pass in Qwen3-VL-MoE (causes tensor size 0 vs 2048 mismatch)
-            # Keep only the sparse MoE block as leaf to avoid over-coalescing giant expert tensors.
+            # 2. Explicitly add a minimal leaf-module set for ZeRO-3 stability.
+            # Keep this list tight to avoid broad all-gather synchronization points.
             important_classes = [
-                # Removed: "SeqorthRouter" - causes gradient race condition in ZeRO-3
-                "SeqorthVisionModel",
-                # Qwen3-VL-MoE Vision
-                "Qwen3VLMoeVisionModel", "Qwen3VLMoeVisionBlock", "Qwen3VLMoeVisionPatchMerger",
                 # Qwen3-VL-MoE Text (do NOT mark Qwen3VLMoeTextExperts as leaf)
-                "Qwen3VLMoeTextSparseMoeBlock", "Qwen3VLMoeTextMLP"
+                "Qwen3VLMoeTextSparseMoeBlock"
             ]
             for name, module in model.named_modules():
                 class_name = type(module).__name__
                 if class_name in important_classes:
                     leaf_classes.add(type(module))
             
-            # 4. Apply to DeepSpeed utils
+            # 3. Apply to DeepSpeed utils
             if leaf_classes:
                 # Remove any None or invalid items just in case
                 leaf_classes = {c for c in leaf_classes if c is not None}

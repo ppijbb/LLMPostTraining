@@ -21,7 +21,7 @@ import json
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from eval.routing_benchmarks.utils import (
+from evaluation.routing_benchmarks.utils import (
     load_seqorth_checkpoint,
     prepare_model_for_eval,
     extract_cv_curve,

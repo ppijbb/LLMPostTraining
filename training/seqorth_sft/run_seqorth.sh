@@ -116,16 +116,11 @@ export WANDB_LOG_MODEL=end
 
 export TORCH_DISTRIBUTED_NCCL_ASYNC_ERROR_HANDLING=1
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
-export NCCL_SHM_DISABLE=1
-export NCCL_P2P_DISABLE=1
-export NCCL_IB_DISABLE=1
 export NCCL_BLOCKING_WAIT=1 
 export NCCL_ASYNC_ERROR_HANDLING=1
 export NCCL_TIMEOUT=1800
 # export NCCL_DEBUG_SUBSYS=COLL
 # export NCCL_DEBUG=INFO
-export NCCL_PROTO=LL
-export NCCL_ALGO=Ring
 # Enable DeepSpeed AutoTP when tensor_parallel.autotp_size > 1 in config (required to avoid OOM)
 export DEEPSPEED_AUTOTP=1
 export DS_AUTOTP=1

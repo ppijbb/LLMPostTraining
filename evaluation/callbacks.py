@@ -56,7 +56,7 @@ from deepeval.metrics import ArenaGEval
 from deepeval.integrations.hugging_face.rich_manager import RichManager
 from trl import SFTTrainer
 from transformers.trainer_callback import ProgressCallback
-from eval.local_deepeval import LocalModel
+from evaluation.local_deepeval import LocalModel
 # Add parent directory to path for custom model imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

@@ -36,8 +36,8 @@ from data.simple_sft_dataset import get_simple_sft_dataset, create_simple_collat
 from core.training_utils.utils import format_parameters, load_config, setup_deepspeed_environment
 from core.optimizers.custom_optimizers import get_custom_optimizer
 from core.optimizers.deepspeed_optimizer_registry import register_custom_optimizers
-from eval.callbacks import get_model_eval_callback
-from eval.moe_monitoring_callback import create_moe_callback_for_transformers
+from evaluation.callbacks import get_model_eval_callback
+from evaluation.moe_monitoring_callback import create_moe_callback_for_transformers
 
 
 def load_config(config_path: str):

@@ -23,7 +23,7 @@ from torch.utils.data import DataLoader
 # Add workspace to path
 # Expect PYTHONPATH to include repo root
 
-from eval.routing_benchmarks.utils.metric_tracker import MetricTracker
+from evaluation.routing_benchmarks.utils.metric_tracker import MetricTracker
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

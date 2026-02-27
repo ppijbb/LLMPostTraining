@@ -666,7 +666,7 @@ class ExpertSpecializationAnalyzer:
 
 Usage example:
 ```python
-from eval.expert_specialization_analysis import ExpertSpecializationAnalyzer
+from evaluation.expert_specialization_analysis import ExpertSpecializationAnalyzer
 
 # Initialize analyzer
 analyzer = ExpertSpecializationAnalyzer(model, tokenizer)

@@ -27,7 +27,7 @@ import copy
 
 from models import G3MoEModel, G3MoETextModel, G3MoEConfig, G3MoEForCausalLM, G3MoEForConditionalGeneration, G3MoETextConfig
 from transformers.modeling_utils import VLMS
-from eval.seqorth_analysis import SeqorthAnalyzer
+from evaluation.seqorth_analysis import SeqorthAnalyzer
 
 
 # Register models

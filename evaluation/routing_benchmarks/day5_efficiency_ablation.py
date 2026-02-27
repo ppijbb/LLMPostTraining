@@ -20,7 +20,7 @@ import json
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from eval.routing_benchmarks.utils import (
+from evaluation.routing_benchmarks.utils import (
     load_seqorth_checkpoint,
     load_baseline_model,
     MetricTracker,
@@ -165,7 +165,7 @@ def run_ablation_study(
     Returns:
         Dictionary of ablation results
     """
-    from day0_sanity_check import evaluate_perplexity
+    from evaluation.routing_benchmarks.day0_sanity_check import evaluate_perplexity
     
     results = {}
     

@@ -10,21 +10,21 @@ from transformers.image_utils import load_image
 from models.seqorth_model import SeqorthRouter
 # Seqorth 분석 도구 import
 try:
-    from eval.seqorth_analysis import SeqorthAnalyzer
+    from evaluation.seqorth_analysis import SeqorthAnalyzer
     seqorth_ANALYSIS_AVAILABLE = True
 except ImportError:
     seqorth_ANALYSIS_AVAILABLE = False
 
 # Seqorth 실제 검증 도구 import
 try:
-    from eval.seqorth_semantic_validation import SeqorthSemanticValidator
+    from evaluation.seqorth_semantic_validation import SeqorthSemanticValidator
     seqorth_VALIDATION_AVAILABLE = True
 except ImportError:
     seqorth_VALIDATION_AVAILABLE = False
 
 # 벤치마크 도구 import
 try:
-    from eval.analyze_expert_specialization import (
+    from evaluation.analyze_expert_specialization import (
         collect_expert_activations,
         compute_expert_similarity,
         analyze_expert_task_correlation,
@@ -34,7 +34,7 @@ except ImportError:
     EXPERT_SPECIALIZATION_AVAILABLE = False
 
 try:
-    from eval.run_seqorth_validation import (
+    from evaluation.run_seqorth_validation import (
         evaluate_model_perplexity,
         run_expression_ablation_study,
         run_information_processing_comparison,
@@ -44,7 +44,7 @@ except ImportError:
     seqorth_VALIDATION_SCRIPT_AVAILABLE = False
 
 try:
-    from eval.measure_efficiency import (
+    from evaluation.measure_efficiency import (
         measure_forward_throughput,
         measure_generation_latency,
         estimate_flops,
@@ -3692,7 +3692,7 @@ class TransformersMoECallbackWrapper(TrainerCallback):
             eval_analyzer.reset()  # 이전 데이터 초기화
             
             # Router와 MoE Block에서 routing 정보 수집을 위한 hook 등록
-            from eval.evaluate_checkpoint_model import RoutingInfoCollector
+            from evaluation.evaluate_checkpoint_model import RoutingInfoCollector
             collector = RoutingInfoCollector(eval_analyzer)
             collector.register_hooks(model)
             

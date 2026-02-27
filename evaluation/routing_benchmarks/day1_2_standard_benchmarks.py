@@ -21,7 +21,7 @@ import subprocess
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from eval.routing_benchmarks.utils import (
+from evaluation.routing_benchmarks.utils import (
     load_seqorth_checkpoint,
     load_baseline_model,
     prepare_model_for_eval,

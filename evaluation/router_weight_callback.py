@@ -18,7 +18,7 @@ try:
 except ImportError:
     ModulesToSaveWrapper = None
 
-from eval.router_weight_tracker import RouterWeightTracker
+from evaluation.router_weight_tracker import RouterWeightTracker
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class RouterWeightTrackingCallback(TrainerCallback):
     Transformers Trainer용 Router 가중치 tracking callback
     
     사용 예시:
-        from eval.router_weight_callback import RouterWeightTrackingCallback
+        from evaluation.router_weight_callback import RouterWeightTrackingCallback
         
         callback = RouterWeightTrackingCallback(
             save_dir="./router_weight_logs",

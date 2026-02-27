@@ -12,7 +12,7 @@ import torch
 import torch.nn.functional as F
 from models.seqorth_model import SeqorthRouter
 from models.seqorth_config import SeqorthTextConfig
-from eval.callbacks import SpecHornScheduler
+from evaluation.callbacks import SpecHornScheduler
 
 def test_router_initialization():
     """Test SeqorthRouter initialization with SpecHorn parameters"""
