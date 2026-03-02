@@ -210,7 +210,7 @@ class ModulesToSaveSyncCallback(TrainerCallback):
                 if actual_model is None:
                     return control
                 
-                from models.seqorth_model import SeqorthRouter, SwitchRouterAdapter
+                from models.seqorth_model import SeqorthRouter
                 sync_count = 0
                 
                 for name, module in actual_model.named_modules():
@@ -259,7 +259,7 @@ class ModulesToSaveSyncCallback(TrainerCallback):
             if actual_model is None:
                 return control
             
-            from models.seqorth_model import SeqorthRouter, SwitchRouterAdapter
+            from models.seqorth_model import SeqorthRouter
             sync_count = 0
             
             for name, module in actual_model.named_modules():
