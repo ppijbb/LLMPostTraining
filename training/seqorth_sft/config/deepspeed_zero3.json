@@ -56,6 +56,7 @@
         "stage3_param_persistence_threshold": 200000.0,
         "stage3_max_live_parameters": 4000000.0,
         "stage3_max_reuse_distance": 4000000.0,
+        "stage3_gather_16bit_weights_on_model_save": true,
         "ignore_unused_parameters": true,
         "leaf_module": {
             "classes": [
