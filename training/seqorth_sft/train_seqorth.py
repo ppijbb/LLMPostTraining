@@ -2307,7 +2307,7 @@ def main(
 
 
     # ZeRO-2 CUDA OOM fix: force offload_optimizer (nvme) into the exact config file
-    # that Accelerate/DeepSpeed will read at ds_initialize so fp32 partition goes to CPU (not 61GB on GPU)
+    # that Accelerate/DeepSpeed will read at ds_initialize so fp32 partition goes to CPU, not 61GB on GPU
     _ds_path = model_config.get("deepspeed_config")
     if _ds_path and isinstance(_ds_path, str) and os.path.exists(_ds_path):
         try:
