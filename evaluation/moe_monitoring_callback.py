@@ -183,10 +183,18 @@ class TorchMoECallback:
         self.tsne_data_buffer = defaultdict(lambda: {
             'hidden_states': deque(maxlen=50),  # 최근 50개 step의 hidden states
             'expert_assignments': deque(maxlen=50),
-            'routing_weights': deque(maxlen=50)
+            'routing_weights': deque(maxlen=50),
+            'domain_ids': deque(maxlen=50),     # per-token domain for domain-colored t-SNE
         })
-        
-        
+
+        # Domain–routing analysis (order must match data.multi_domain_sft_dataset.DOMAIN_TO_ID)
+        self.domain_names = ["math", "science", "code", "puzzle", "vision", "ocr", "chat"]
+        self.num_domains = len(self.domain_names)
+        self.domain_expert_counts_window = deque(maxlen=100)  # list of (num_domains, num_experts) arrays
+        self.domain_routing_buffer = {}   # layer_name -> domain_id -> expert counts (last step)
+        self.domain_loss_accum = defaultdict(list)   # domain_id -> list of loss scalars for PPL (filled by trainer/model)
+        self._domain_expert_counts_current = None    # (num_domains, num_experts) for current step
+
         # Vision 모듈 모니터링 (vision_tower, multi_modal_projector)
         self.vision_hooks = []
         self.vision_tower_outputs = []  # vision_tower 출력 히스토리
@@ -591,6 +599,23 @@ class TorchMoECallback:
                             if hidden_states_sampled.size(0) == expert_assignments_sampled.size(0):
                                 self.tsne_data_buffer[layer_name]['hidden_states'].append(hidden_states_sampled)
                                 self.tsne_data_buffer[layer_name]['expert_assignments'].append(expert_assignments_sampled)
+                                # Domain ids (per-token, same indices as sampled) for domain-colored t-SNE
+                                domain_ids = getattr(self.model, '_current_batch_domain_ids', None)
+                                if domain_ids is not None and torch.is_tensor(domain_ids) and domain_ids.numel() > 0:
+                                    domain_ids = domain_ids.cpu().flatten()
+                                    batch_size = int(domain_ids.shape[0])
+                                    if batch_size > 0 and num_tokens % batch_size == 0:
+                                        seq_len = num_tokens // batch_size
+                                        domain_per_tok = domain_ids.repeat_interleave(seq_len)
+                                        if num_tokens > 1000:
+                                            domain_sampled = domain_per_tok[indices]
+                                        else:
+                                            domain_sampled = domain_per_tok
+                                        self.tsne_data_buffer[layer_name]['domain_ids'].append(domain_sampled)
+                                    else:
+                                        self.tsne_data_buffer[layer_name]['domain_ids'].append(None)
+                                else:
+                                    self.tsne_data_buffer[layer_name]['domain_ids'].append(None)
                     
                     # 디버깅 로그는 항상 출력 (step 정보 제거)
                     # self._log_debug(f"{layer_name}: extracted {list(routing_info.keys())}")
@@ -931,6 +956,13 @@ class TorchMoECallback:
                             self.layer_outputs[layer_name] = collected[layer_name]
                 except Exception:
                     pass
+
+        # Domain–expert routing update (for NMI, separation, heatmap, etc.)
+        try:
+            self._update_domain_routing()
+        except Exception as e:
+            if self.log_to_console and current_step <= 5:
+                self._log_debug(f"Step {current_step}: _update_domain_routing error: {e}")
 
         # 메트릭 계산
         step_metrics = self._calculate_step_metrics()
@@ -2188,7 +2220,112 @@ class TorchMoECallback:
             if self.log_to_console:
                 self._log_debug(f"_collect_from_model_state error: {e}")
         return collected
-    
+
+    def _update_domain_routing(self):
+        """Update domain–expert counts from model._current_batch_domain_ids and layer_outputs (2D expert_assignments)."""
+        if self.model is None or not self.layer_outputs:
+            return
+        domain_ids = getattr(self.model, "_current_batch_domain_ids", None)
+        if domain_ids is None or not torch.is_tensor(domain_ids) or domain_ids.numel() == 0:
+            return
+        domain_ids = domain_ids.cpu().flatten()
+        batch_size = int(domain_ids.shape[0])
+        if batch_size == 0:
+            return
+        num_domains = self.num_domains
+        num_experts = self.num_experts
+        # Aggregate over layers: use first layer with 2D expert_assignments
+        total_counts = np.zeros((num_domains, num_experts), dtype=np.float64)
+        self.domain_routing_buffer.clear()
+        for layer_name, data in self.layer_outputs.items():
+            ea = data.get("expert_assignments")
+            if ea is None or not torch.is_tensor(ea):
+                continue
+            if ea.dim() != 2:
+                continue
+            n_tok, top_k = ea.shape[0], ea.shape[1]
+            seq_len = n_tok // batch_size
+            if seq_len * batch_size != n_tok:
+                continue
+            domain_per_token = domain_ids.repeat_interleave(seq_len).numpy()
+            experts_np = ea.numpy()
+            layer_counts = np.zeros((num_domains, num_experts), dtype=np.float64)
+            for i in range(n_tok):
+                d = int(domain_per_token[i])
+                if d < 0 or d >= num_domains:
+                    continue
+                for k in range(top_k):
+                    e = int(experts_np[i, k])
+                    if 0 <= e < num_experts:
+                        layer_counts[d, e] += 1.0
+                        total_counts[d, e] += 1.0
+            self.domain_routing_buffer[layer_name] = layer_counts.copy()
+        if np.any(total_counts > 0):
+            self._domain_expert_counts_current = total_counts.copy()
+            self.domain_expert_counts_window.append(total_counts.copy())
+
+    def _compute_domain_nmi(self, domain_expert_counts: np.ndarray) -> Optional[float]:
+        """Normalized Mutual Information between domain and expert assignment. 0 = independent, 1 = deterministic."""
+        if domain_expert_counts is None or domain_expert_counts.size == 0:
+            return None
+        P = domain_expert_counts / (domain_expert_counts.sum() + 1e-12)
+        P_d = P.sum(axis=1)
+        P_e = P.sum(axis=0)
+        H_d = -np.sum(P_d * np.log(P_d + 1e-12))
+        H_e = -np.sum(P_e * np.log(P_e + 1e-12))
+        if H_d <= 0 or H_e <= 0:
+            return None
+        I_de = 0.0
+        for d in range(P.shape[0]):
+            for e in range(P.shape[1]):
+                if P[d, e] > 0:
+                    I_de += P[d, e] * np.log((P[d, e] + 1e-12) / (P_d[d] * P_e[e] + 1e-12))
+        nmi = 2.0 * I_de / (H_d + H_e + 1e-12)
+        return float(np.clip(nmi, 0.0, 1.0))
+
+    def _compute_domain_separation_score(self, domain_expert_counts: np.ndarray) -> Optional[float]:
+        """Average JS divergence between pairs of domain expert distributions. Higher = more domain separation."""
+        if domain_expert_counts is None or domain_expert_counts.shape[0] < 2:
+            return None
+        rows = domain_expert_counts / (domain_expert_counts.sum(axis=1, keepdims=True) + 1e-12)
+        n = rows.shape[0]
+        js_sum = 0.0
+        pairs = 0
+        for i in range(n):
+            for j in range(i + 1, n):
+                p, q = rows[i], rows[j]
+                m = 0.5 * (p + q)
+                js = 0.5 * (np.sum(p * np.log((p + 1e-12) / (m + 1e-12))) + np.sum(q * np.log((q + 1e-12) / (m + 1e-12))))
+                js_sum += max(0.0, js)
+                pairs += 1
+        return float(js_sum / (pairs + 1e-12))
+
+    def _compute_expert_purity(self, domain_expert_counts: np.ndarray) -> Optional[float]:
+        """Average over experts of max_d P(domain|expert). Higher = each expert specializes in one domain."""
+        if domain_expert_counts is None or domain_expert_counts.size == 0:
+            return None
+        col_sum = domain_expert_counts.sum(axis=0, keepdims=True) + 1e-12
+        P_d_given_e = domain_expert_counts / col_sum
+        max_per_expert = P_d_given_e.max(axis=0)
+        return float(max_per_expert.mean())
+
+    def _compute_per_domain_routing_metrics(self, domain_expert_counts: np.ndarray) -> tuple:
+        """Returns (entropy_per_domain: dict name->float, concentration_per_domain: dict name->float)."""
+        entropy_per = {}
+        concentration_per = {}
+        if domain_expert_counts is None or domain_expert_counts.size == 0:
+            return entropy_per, concentration_per
+        row_sum = domain_expert_counts.sum(axis=1, keepdims=True) + 1e-12
+        P_e_given_d = domain_expert_counts / row_sum
+        top_k = min(4, domain_expert_counts.shape[1])
+        for d in range(domain_expert_counts.shape[0]):
+            p = P_e_given_d[d]
+            ent = -np.sum(p * np.log(p + 1e-12))
+            entropy_per[self.domain_names[d]] = float(ent)
+            sorted_p = np.sort(p)[::-1]
+            concentration_per[self.domain_names[d]] = float(np.sum(sorted_p[:top_k]))
+        return entropy_per, concentration_per
+
     def _log_metrics(self, metrics, current_step: int):
         """메트릭 로깅.
 
@@ -2617,7 +2754,36 @@ class TorchMoECallback:
                         f"  Traceback:\n{traceback.format_exc()}"
                     )
                     self._log_debug(error_msg)
-        
+
+        # Domain–routing metrics (NMI, separation, purity, per-domain entropy/concentration)
+        agg = None
+        if self.domain_expert_counts_window:
+            agg = np.sum(self.domain_expert_counts_window, axis=0)
+        elif self._domain_expert_counts_current is not None:
+            agg = self._domain_expert_counts_current
+        if agg is not None and np.any(agg > 0):
+            nmi = self._compute_domain_nmi(agg)
+            if nmi is not None:
+                log_data['moe/domain/nmi'] = nmi
+            sep = self._compute_domain_separation_score(agg)
+            if sep is not None:
+                log_data['moe/domain/separation_score'] = sep
+            purity = self._compute_expert_purity(agg)
+            if purity is not None:
+                log_data['moe/domain/expert_purity'] = purity
+            ent_per, conc_per = self._compute_per_domain_routing_metrics(agg)
+            for name, ent in ent_per.items():
+                log_data[f'moe/domain/{name}/routing_entropy'] = ent
+            for name, conc in conc_per.items():
+                log_data[f'moe/domain/{name}/top_expert_concentration'] = conc
+        # Per-domain perplexity (when domain_loss_accum is filled by trainer)
+        for d_id, losses in self.domain_loss_accum.items():
+            if d_id < 0 or d_id >= self.num_domains or not losses:
+                continue
+            name = self.domain_names[d_id]
+            mean_loss = float(np.mean(losses))
+            log_data[f'moe/domain/{name}/perplexity'] = float(np.exp(min(mean_loss, 20.0)))
+
         # log_data가 비어있어도 최소한의 디버그 정보는 로깅 - moe 카테고리로 분리
         if not log_data:
             log_data['moe/no_metrics'] = 1.0
@@ -2772,6 +2938,11 @@ class TorchMoECallback:
             
             if not heatmap_created and self.log_to_console:
                 self._log_debug(f"No heatmaps were created at step {current_step}")
+
+            # Domain–expert routing heatmap
+            self._generate_domain_expert_heatmap(current_step)
+            # Per-layer domain routing stacked bar (first layer only for brevity)
+            self._generate_domain_per_layer_stacked_bar(current_step)
                 
         except ImportError as e:
             if self.log_to_console:
@@ -2780,7 +2951,80 @@ class TorchMoECallback:
             import traceback
             if self.log_to_console:
                 self._log_debug(f"Error during heatmap logging: {e}\n{traceback.format_exc()}")
-    
+
+    def _generate_domain_expert_heatmap(self, current_step: int):
+        """Domain x expert routing frequency heatmap for wandb."""
+        agg = None
+        if self.domain_expert_counts_window:
+            agg = np.sum(self.domain_expert_counts_window, axis=0)
+        elif self._domain_expert_counts_current is not None:
+            agg = self._domain_expert_counts_current
+        if agg is None or not np.any(agg > 0):
+            return
+        try:
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+            import seaborn as sns
+            row_sum = agg.sum(axis=1, keepdims=True) + 1e-12
+            norm = agg / row_sum
+            plt.figure(figsize=(max(10, self.num_experts // 4), 6))
+            sns.heatmap(norm, xticklabels=False, yticklabels=self.domain_names,
+                        cmap='YlOrRd', cbar_kws={'label': 'Routing fraction'})
+            plt.title(f'Domain–Expert Routing (Step {current_step})')
+            plt.xlabel('Expert index')
+            plt.ylabel('Domain')
+            plt.tight_layout()
+            try:
+                import wandb
+                if current_step not in self.pending_heatmaps:
+                    self.pending_heatmaps[current_step] = {}
+                self.pending_heatmaps[current_step]['domain_expert'] = wandb.Image(plt)
+            except ImportError:
+                pass
+            plt.close()
+        except Exception as e:
+            if self.log_to_console:
+                self._log_debug(f"Domain-expert heatmap error: {e}")
+
+    def _generate_domain_per_layer_stacked_bar(self, current_step: int):
+        """Per-layer stacked bar: for one layer, each expert shows domain-wise routing count."""
+        if not self.domain_routing_buffer:
+            return
+        try:
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+            layer_name = next(iter(self.domain_routing_buffer))
+            counts = self.domain_routing_buffer[layer_name]
+            if counts is None or counts.size == 0:
+                return
+            # counts: (num_domains, num_experts)
+            num_experts = counts.shape[1]
+            x = np.arange(num_experts)
+            bottom = np.zeros(num_experts)
+            fig, ax = plt.subplots(1, 1, figsize=(max(10, num_experts // 4), 5))
+            colors = plt.cm.tab10(np.linspace(0, 1, self.num_domains))
+            for d in range(counts.shape[0]):
+                ax.bar(x, counts[d], bottom=bottom, label=self.domain_names[d], color=colors[d])
+                bottom += counts[d]
+            ax.set_xlabel('Expert index')
+            ax.set_ylabel('Routing count')
+            ax.set_title(f'Per-layer domain routing: {layer_name} (Step {current_step})')
+            ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=8)
+            plt.tight_layout()
+            try:
+                import wandb
+                if current_step not in self.pending_heatmaps:
+                    self.pending_heatmaps[current_step] = {}
+                self.pending_heatmaps[current_step]['domain_per_layer_stacked'] = wandb.Image(plt)
+            except ImportError:
+                pass
+            plt.close()
+        except Exception as e:
+            if self.log_to_console:
+                self._log_debug(f"Domain per-layer stacked bar error: {e}")
+
     def _generate_tsne_visualizations(self, current_step: int):
         """Layer별 t-SNE 시각화 생성 (expert clustering 시각화)"""
         if not self.tsne_data_buffer:
@@ -2799,6 +3043,7 @@ class TorchMoECallback:
             for layer_name, buffer in self.tsne_data_buffer.items():
                 hidden_states_list = buffer['hidden_states']
                 expert_assignments_list = buffer['expert_assignments']
+                domain_ids_list = buffer.get('domain_ids', deque(maxlen=50))
                 
                 if self.log_to_console:
                     self._log_debug(f"📊 t-SNE data for {layer_name}: hidden_states={len(hidden_states_list)}, expert_assignments={len(expert_assignments_list)}")
@@ -2811,6 +3056,7 @@ class TorchMoECallback:
                 # 최근 데이터만 사용 (메모리 절약)
                 recent_hidden = list(hidden_states_list)[-10:]  # 최근 10개 step
                 recent_experts = list(expert_assignments_list)[-10:]
+                recent_domains = list(domain_ids_list)[-10:] if domain_ids_list else []
                 
                 if not recent_hidden or not recent_experts:
                     if self.log_to_console:
@@ -2827,8 +3073,9 @@ class TorchMoECallback:
                     # 데이터 결합: 각 step의 길이가 맞는지 확인하며 결합
                     valid_hidden = []
                     valid_experts = []
+                    valid_domains = []
                     
-                    for h, e in zip(recent_hidden, recent_experts):
+                    for idx, (h, e) in enumerate(zip(recent_hidden, recent_experts)):
                         if h is None or e is None:
                             continue
                         if not torch.is_tensor(h) or not torch.is_tensor(e):
@@ -2838,6 +3085,11 @@ class TorchMoECallback:
                         if h_len > 0 and e_len > 0 and h_len == e_len:
                             valid_hidden.append(h)
                             valid_experts.append(e)
+                            d = recent_domains[idx] if idx < len(recent_domains) else None
+                            if d is not None and torch.is_tensor(d) and d.numel() == h_len:
+                                valid_domains.append(d)
+                            else:
+                                valid_domains.append(None)
                         elif self.log_to_console:
                             self._log_debug(f"⚠️ Skipping step data: length mismatch (hidden={h_len}, experts={e_len})")
                     
@@ -2849,6 +3101,9 @@ class TorchMoECallback:
                     # 결합
                     all_hidden = torch.cat(valid_hidden, dim=0).numpy()  # [num_tokens, hidden_dim]
                     all_experts = torch.cat(valid_experts, dim=0).numpy()  # [num_tokens]
+                    all_domains = None
+                    if valid_domains and all(d is not None for d in valid_domains):
+                        all_domains = torch.cat(valid_domains, dim=0).numpy()
                     
                     if self.log_to_console:
                         self._log_debug(f"📊 Combined data for {layer_name}: {len(all_hidden)} tokens from {len(valid_hidden)} steps")
@@ -2858,9 +3113,11 @@ class TorchMoECallback:
                         indices = np.random.choice(len(all_hidden), self.tsne_sample_size, replace=False)
                         sampled_hidden = all_hidden[indices]
                         sampled_experts = all_experts[indices]
+                        sampled_domains = all_domains[indices] if all_domains is not None else None
                     else:
                         sampled_hidden = all_hidden
                         sampled_experts = all_experts
+                        sampled_domains = all_domains
                     
                     if len(sampled_hidden) < 10:  # 최소 샘플 수 확인
                         if self.log_to_console:
@@ -2898,6 +3155,34 @@ class TorchMoECallback:
                     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
                     ax.grid(alpha=0.3)
                     plt.tight_layout()
+                    
+                    # wandb에 로깅 (pending_heatmaps에 저장하여 on_log에서 실제 로깅)
+                    domain_tsne_logged = False
+                    if sampled_domains is not None and len(np.unique(sampled_domains)) > 0:
+                        fig2, ax2 = plt.subplots(1, 1, figsize=(12, 10))
+                        uniq_d = np.unique(sampled_domains)
+                        uniq_d = uniq_d[(uniq_d >= 0) & (uniq_d < self.num_domains)]
+                        colors_d = plt.cm.tab10(np.linspace(0, 1, max(10, len(uniq_d))))
+                        for i, d in enumerate(uniq_d):
+                            mask = sampled_domains == d
+                            if mask.sum() > 0:
+                                name = self.domain_names[int(d)] if int(d) < self.num_domains else f"d{d}"
+                                ax2.scatter(embeddings_2d[mask, 0], embeddings_2d[mask, 1], label=name, alpha=0.6, s=20, c=[colors_d[i % len(colors_d)]])
+                        ax2.set_title(f'{layer_name} Token Clustering by Domain (t-SNE)\nStep {current_step}', fontsize=14)
+                        ax2.set_xlabel('t-SNE Dimension 1', fontsize=12)
+                        ax2.set_ylabel('t-SNE Dimension 2', fontsize=12)
+                        ax2.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+                        ax2.grid(alpha=0.3)
+                        plt.tight_layout()
+                        try:
+                            import wandb
+                            if current_step not in self.pending_heatmaps:
+                                self.pending_heatmaps[current_step] = {}
+                            self.pending_heatmaps[current_step][f'{layer_name}_tsne_domain'] = wandb.Image(fig2)
+                            domain_tsne_logged = True
+                        except ImportError:
+                            pass
+                        plt.close(fig2)
                     
                     # wandb에 로깅 (pending_heatmaps에 저장하여 on_log에서 실제 로깅)
                     try:
@@ -3236,6 +3521,11 @@ class TransformersMoECallbackWrapper(TrainerCallback):
 
         # global_step을 logs에 명시적으로 추가 (wandb에서 step 추적용)
         logs['train/global_step'] = float(state.global_step)
+
+        # Global training perplexity
+        if 'loss' in logs:
+            import math
+            logs['train/perplexity'] = math.exp(min(float(logs['loss']), 20.0))
         
         # 해당 step의 pending 메트릭 확인
         # on_log는 logging_steps마다 호출되므로, 최근 step의 메트릭을 찾아야 함

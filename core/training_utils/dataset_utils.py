@@ -9,7 +9,7 @@ def setup_dataset(data_config: Dict[str, Any], tokenizer, logger: logging.Logger
     Qwen3-VL-MoE 전용: Native Processor를 100% 활용하는 데이터셋 설정.
     Universal Exoskeleton 구조를 위해 불필요한 래퍼를 제거함.
     """
-    from data.multi_domain_sft_dataset import get_multi_domain_sft_dataset
+    from data.multi_domain_sft_dataset import get_multi_domain_sft_dataset, DOMAIN_TO_ID
     
     dataset_name = data_config.get("dataset_name", "HuggingFaceTB/smoltalk")
     max_samples = data_config.get("max_samples", 100000)
@@ -119,6 +119,10 @@ def setup_dataset(data_config: Dict[str, Any], tokenizer, logger: logging.Logger
             _num_patches = int(_pv.shape[0]) if _pv is not None and hasattr(_pv, "shape") else None
             _grid_str = tuple(_grid.shape) if _grid is not None and hasattr(_grid, "shape") else str(_grid)
             print(f"[0vs2048] COLLATOR CHECK: first batch | pixel_values.shape={getattr(_pv, 'shape', None)}, image_grid_thw.shape={_grid_str} | num_patches(seq)={_num_patches} (must be same on all ranks)", flush=True)
+
+        # Domain ids for routing metrics (MoE callback)
+        domain_ids_list = [DOMAIN_TO_ID.get(example.get("domain") or "", -1) for example in examples]
+        batch["domain_ids"] = torch.tensor(domain_ids_list, dtype=torch.long)
 
         return batch
 

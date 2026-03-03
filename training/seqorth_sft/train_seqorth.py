@@ -2712,6 +2712,11 @@ def main(
         _compute_loss_step = [0]  # first step batch log
 
         def patched_compute_loss(model, inputs, return_outputs=False, num_items_in_batch=None):
+            # Domain ids for MoE routing metrics (callback reads from model after forward)
+            domain_ids = inputs.pop("domain_ids", None)
+            base_model = getattr(model, "module", model)
+            base_model._current_batch_domain_ids = domain_ids
+
             # [0vs2048] Participation Guard (v16) - Global Connection
             global _PARTICIPATION_POOL
             if '_PARTICIPATION_POOL' in globals():

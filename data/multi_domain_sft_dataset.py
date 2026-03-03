@@ -1892,6 +1892,10 @@ DOMAIN_DATASETS = {
     ]
 }
 
+# Domain name -> integer id for routing metrics (callback uses same order).
+DOMAIN_TO_ID = {name: i for i, name in enumerate(["math", "science", "code", "puzzle", "vision", "ocr", "chat"])}
+NUM_DOMAIN_IDS = len(DOMAIN_TO_ID)
+
 def _generate_cache_key(domain_configs: Dict[str, List[str]], max_samples_per_domain: int, 
                        test_size: float, use_streaming: bool, max_workers: int) -> str:
     """캐시 키 생성"""
@@ -3432,6 +3436,14 @@ def create_simple_collate_fn(processor, max_length: int = 2048, allow_text_only:
                 labels[labels == tokenizer.pad_token_id] = -100
                 
             output["labels"] = labels
+
+            # Preserve domain for routing metrics: batch of domain integer ids [batch_size]
+            domain_ids_list = []
+            for example in examples:
+                domain_str = example.get("domain") or ""
+                domain_id = DOMAIN_TO_ID.get(domain_str, -1)
+                domain_ids_list.append(domain_id)
+            output["domain_ids"] = torch.tensor(domain_ids_list, dtype=torch.long)
             
             return output
 
