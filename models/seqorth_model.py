@@ -511,6 +511,7 @@ def seqorth_lb_loss(
     top_k: int = 2,
     lb_topk_l2_coef: float = 0.0,
     lb_topk_cv_coef: float = 0.0,
+    lb_maxvio_coef: float = 0.0,
     attention_mask: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """
@@ -527,6 +528,7 @@ def seqorth_lb_loss(
         top_k: Number of experts selected per token
         lb_topk_l2_coef: Weight for top-k token count uniformity loss
         lb_topk_cv_coef: Weight for top-k token count CV minimization
+        lb_maxvio_coef: Weight for max deviation (maxvio) penalty
         attention_mask: Attention mask for valid tokens
 
     Returns:
@@ -594,6 +596,12 @@ def seqorth_lb_loss(
         var_p = p_bar.var(unbiased=False)  # Population variance
         cv_loss = var_p / (mean_p + eps)
         total_loss = total_loss + lb_cv_coef * cv_loss
+
+    # Max violation: direct penalty on worst expert deviation
+    if lb_maxvio_coef > 0:
+        deviation = (p_bar - u).abs()
+        maxvio_loss = deviation.max()
+        total_loss = total_loss + lb_maxvio_coef * maxvio_loss
 
     # Entropy floor (optional)
     if lb_entropy_floor_coef > 0:
@@ -1030,8 +1038,7 @@ class SeqorthRouter(nn.Module):
         self.bias_update_rate = 0.001 
         self.temperature = 0.1
 
-        # [Gradient Checkpointing] Deferred per-layer updates (overwrite, not accumulate)
-        self._delta_per_layer: Dict[int, torch.Tensor] = {}
+        # [Gradient Checkpointing] Deferred per-layer observations for flush
         self._cv_per_layer: Dict[int, float] = {}
         self._maxvio_per_layer: Dict[int, float] = {}
         self._load_frac_per_layer: Dict[int, torch.Tensor] = {}
@@ -1043,8 +1050,8 @@ class SeqorthRouter(nn.Module):
         # CV / maxvio tracking (lightweight port from trainable_seqorth for balance loss and adaptive bias)
         self.register_buffer("cv_ema", torch.tensor(1.0))
         self.register_buffer("max_vio_ema", torch.tensor(0.0))
-        self.cv_ema_alpha = 0.95
-        self.max_vio_ema_alpha = 0.95
+        self.cv_ema_alpha = getattr(config, "cv_ema_alpha", 0.85)
+        self.max_vio_ema_alpha = getattr(config, "max_vio_ema_alpha", 0.85)
         self._proportional_correction_strength = getattr(config, "proportional_correction_strength", 0.5)
         self._soft_barrier_coef = getattr(config, "soft_barrier_coef", 0.15)
         # [Stability] Per-step bias update cap to avoid CV/maxvio spikes from overshoot
@@ -1056,7 +1063,6 @@ class SeqorthRouter(nn.Module):
         self._hysteresis_same = getattr(config, "bias_hysteresis_same", 0.6)
         # [Intent damping] Smoothed gain for controller path (gain-up / decay-down); updated only in flush
         self.register_buffer("_intent_gain_smoothed", torch.tensor(1.0))
-        self._intent_desired_per_layer: Dict[int, float] = {}
         self._intent_gain_rise = getattr(config, "intent_gain_rise", 0.35)
         self._intent_gain_decay = getattr(config, "intent_gain_decay", 0.12)
         self._intent_gain_clip_min = getattr(config, "intent_gain_clip_min", 0.6)
@@ -1194,20 +1200,16 @@ class SeqorthRouter(nn.Module):
                 self._prev_bias_delta.copy_(delta_smooth)
                 self.expert_bias.add_(delta_smooth)
                 self.expert_bias.clamp_(min=-self._alf_bias_max, max=self._alf_bias_max)
-                # Dual: magnitude-aware increase for over-target experts (low-pass)
+                # Dual: standard augmented Lagrangian dual ascent (symmetric update)
                 eta = self._dual_eta_base
-                excess = (mean_load_frac - target).clamp(min=0.0)
-                dual_delta = eta * excess.to(self.dual_lambda.dtype)
+                eta_effective = eta * (1.0 + float(self.cv_ema.clamp(max=10.0).item()))
+                dual_delta = eta_effective * error.to(self.dual_lambda.dtype)
                 self.dual_lambda.add_(dual_delta)
                 self.dual_lambda.clamp_(min=0.0, max=self._dual_lambda_max)
                 self._last_load_frac.copy_(mean_load_frac)
                 load_frac_map.clear()
 
             # Clear deferred maps (avoid leak)
-            if self._delta_per_layer:
-                self._delta_per_layer.clear()
-            if self._intent_desired_per_layer:
-                self._intent_desired_per_layer.clear()
             reassign_map = getattr(self, "_reassignment_count_per_layer", {})
             if reassign_map:
                 reassign_map.clear()
@@ -1379,25 +1381,6 @@ class SeqorthRouter(nn.Module):
                 self._cv_per_layer[layer_idx] = current_cv
                 self._maxvio_per_layer[layer_idx] = col_vio_ratio
 
-        if self.training:
-            with torch.no_grad():
-                _cv_snap = float(self.cv_ema.clamp(min=0.1, max=5.0).item())
-                _mvio_snap = float(self.max_vio_ema.clamp(min=0.01, max=5.0).item())
-                target = local_load.sum() / E
-                load_error = local_load - target
-                target_safe = max(float(target.item()), 1e-6)
-                normalized_error = (load_error / target_safe).clamp(-2.0, 2.0)
-                adaptive_rate = self.bias_update_rate * _cv_snap * min(1.0 + _mvio_snap * 0.2, 2.0)
-                raw_intent_gain = min(1.5, 1.0 + 0.2 * intent_strength + 0.15 * intent_concentration)
-                if _cv_snap > 0.5 or _mvio_snap > 0.5:
-                    damp = getattr(self.config, "intent_imbalance_damp", 0.85)
-                    raw_intent_gain = raw_intent_gain * damp
-                self._intent_desired_per_layer[layer_idx] = raw_intent_gain
-                effective_gain = float(self._intent_gain_smoothed.clamp(self._intent_gain_clip_min, self._intent_gain_clip_max).item())
-                adaptive_rate = min(adaptive_rate * effective_gain, 0.01)
-                delta = -adaptive_rate * normalized_error.to(self.expert_bias.dtype)
-                self._delta_per_layer[layer_idx] = delta.detach().clone()
-
         # ----------------------------------------------------------------
         # 6. Routing weights (narrow temp range for stability)
         # ----------------------------------------------------------------
@@ -1423,6 +1406,7 @@ class SeqorthRouter(nn.Module):
                 top_k=k,
                 lb_topk_l2_coef=getattr(self.config, "lb_topk_l2_coef", 0.09),
                 lb_topk_cv_coef=getattr(self.config, "lb_topk_cv_coef", 0.07),
+                lb_maxvio_coef=getattr(self.config, "lb_maxvio_coef", 0.0),
                 attention_mask=None,
             )
             load_frac = self._load_frac_per_layer.get(layer_idx)
