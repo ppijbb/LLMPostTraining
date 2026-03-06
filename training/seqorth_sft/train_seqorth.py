@@ -713,16 +713,24 @@ def apply_universal_exoskeleton_guard(logger):
 
 def apply_deepspeed_shutil_patch():
     try:
-        import deepspeed.runtime.engine as ds_engine
-        if hasattr(ds_engine, 'shutil') and hasattr(ds_engine.shutil, 'copytree'):
-            original_copytree = ds_engine.shutil.copytree
-            def patched_copytree(src, dst, **kwargs):
-                kwargs['dirs_exist_ok'] = True
-                return original_copytree(src, dst, **kwargs)
-            ds_engine.shutil.copytree = patched_copytree
-            print("✅ Patched deepspeed.runtime.engine.shutil.copytree with dirs_exist_ok=True")
+        import shutil
+
+        if getattr(shutil, "_seqorth_copytree_patched", False):
+            return
+
+        original_copytree = shutil.copytree
+
+        def patched_copytree(src, dst, *args, **kwargs):
+            # DeepSpeed NVMe offload checkpoint copy can revisit an existing rank dir.
+            if "offloaded_tensors" in str(dst):
+                kwargs["dirs_exist_ok"] = True
+            return original_copytree(src, dst, *args, **kwargs)
+
+        shutil.copytree = patched_copytree
+        shutil._seqorth_copytree_patched = True
+        print("✅ Patched shutil.copytree for DeepSpeed offloaded_tensors checkpoints")
     except Exception as e:
-        print(f"⚠️ Failed to patch deepspeed shutil: {e}")
+        print(f"⚠️ Failed to patch shutil.copytree: {e}")
 
 apply_deepspeed_shutil_patch()
 
