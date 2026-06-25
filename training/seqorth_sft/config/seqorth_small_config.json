@@ -1,7 +1,7 @@
 {
   "model_config": {
-    "model_name_or_path": "HuggingFaceTB/SmolVLM-256M-Instruct",
-    "tokenizer_name_or_path": "HuggingFaceTB/SmolVLM-256M-Instruct",
+    "model_name_or_path": "google/gemma-4-26B-A4B-it",
+    "tokenizer_name_or_path": "google/gemma-4-26B-A4B-it",
     "trust_remote_code": true,
     "low_cpu_mem_usage": true,
     "use_lora": true,
@@ -80,7 +80,7 @@
   },
   "data_config": {
     "use_multi_domain": true,
-    "dataset_name": "HuggingFaceTB/smoltalk",
+    "dataset_name": "Gunulhona/open_m_3",
     "max_samples": 100000,
     "max_samples_per_domain": null,
     "max_seq_length": 131072,
