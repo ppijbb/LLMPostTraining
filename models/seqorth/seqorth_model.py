@@ -1030,6 +1030,21 @@ class SeqorthRouter(nn.Module):
         self.bias_update_rate = 0.001 
         self.temperature = 0.1
 
+        # SpecHorn Parameters
+        self.bias_scale = getattr(config, "spechorn_bias_scale", 8.0)
+        self.cap_penalty_scale = getattr(config, "spechorn_cap_penalty_scale", 15.0)
+        self.ortho_scale = getattr(config, "spechorn_ortho_scale", 0.4)
+        self.sinkhorn_eps = getattr(config, "spechorn_sinkhorn_eps", 0.05)
+        self.sinkhorn_iter = getattr(config, "spechorn_sinkhorn_iter", 4)
+        self.spec_update_every = getattr(config, "spechorn_spec_update_every", 16)
+
+        # SpecHorn EMA Buffers
+        self.register_buffer("load_ema", torch.zeros(self.num_experts))
+        self.register_buffer("spec_vec", torch.zeros(self.num_experts, self.hidden_size))
+        self.register_buffer("spec_ema", torch.zeros(self.num_experts))
+        self.register_buffer("batch_capacity_used", torch.zeros(self.num_experts))
+        self.register_buffer("global_step", torch.tensor(0, dtype=torch.long))
+
         # [Gradient Checkpointing] Deferred per-layer updates (overwrite, not accumulate)
         self._delta_per_layer: Dict[int, torch.Tensor] = {}
         self._cv_per_layer: Dict[int, float] = {}
@@ -1232,7 +1247,7 @@ class SeqorthRouter(nn.Module):
         x_flat = x.view(-1, self.hidden_size)
         N = x_flat.size(0)
         E = self.num_experts
-        k = self.config.num_experts_per_tok
+        k = top_k
 
         zero = x_flat.sum() * 0.0
 
@@ -1253,12 +1268,34 @@ class SeqorthRouter(nn.Module):
         priority_scores = self.priority_proj(x_flat + intent)
 
         # ----------------------------------------------------------------
-        # 2. Semantic Affinity
+        # 2. Semantic Affinity (Subspace Orthogonalization)
         # ----------------------------------------------------------------
-        x_norm = F.normalize(x_flat, p=2, dim=-1)
+        if is_dummy_batch:
+            x_norm_flat = F.normalize(x_flat, p=2, dim=-1)
+            seqorth_loss = zero
+        else:
+            x_seq = x.float()
+            
+            # Sequence Centering (Anisotropy Defense)
+            x_mean = x_seq.mean(dim=1, keepdim=True)
+            x_centered = x_seq - x_mean
+            
+            # Normalize tokens for Spherical Bidding
+            x_norm_seq = F.normalize(x_centered, p=2, dim=-1)
+            
+            # [Seq-Orth Loss] Force similarity with other tokens in the same sequence to 0
+            gram_seq = torch.bmm(x_norm_seq, x_norm_seq.transpose(1, 2)) # [B, S, S]
+            identity_seq = torch.eye(seq_len, device=x.device).unsqueeze(0).expand(batch_size, -1, -1)
+            
+            # True horizontal sequence-orthogonalization loss
+            seqorth_loss = ((gram_seq - identity_seq) ** 2).mean() * (0.1 + 0.9 * step_frac)
+            
+            # Flatten back for routing
+            x_norm_flat = x_norm_seq.view(-1, self.hidden_size).to(dtype=x.dtype)
+
         codebook = self.expert_codebook.to(x.dtype)
         codes_norm = F.normalize(codebook, p=2, dim=1)
-        semantic_logits = F.linear(x_norm, codes_norm)
+        semantic_logits = F.linear(x_norm_flat, codes_norm)
         # Intent-safe damping: reduce intent contribution when cv/maxvio above threshold (floor preserved)
         intent_scale = 1.0
         if self.training:
@@ -1409,7 +1446,7 @@ class SeqorthRouter(nn.Module):
 
         router_logits_out = biased_logits
 
-        ortho_loss = self.compute_affinity_loss() * 0.05
+        ortho_loss = seqorth_loss
         if is_dummy_batch:
             load_balancing_loss = zero
             balance_loss = zero
@@ -1434,11 +1471,12 @@ class SeqorthRouter(nn.Module):
                 balance_loss = zero
 
         if is_dummy_batch:
-             return (
+            hn_out_dummy = hn if hn is not None else torch.empty(0, self.hidden_size, device=x.device, dtype=x.dtype)
+            return (
                 torch.empty(0, k, device=x.device, dtype=routing_weights.dtype),
                 torch.empty(0, k, device=x.device, dtype=topk_indices.dtype),
                 None,
-                torch.empty(0, self.hidden_size, device=x.device, dtype=x.dtype),
+                hn_out_dummy,
                 zero, zero, zero,
                 torch.empty(0, E, device=x.device, dtype=biased_logits.dtype),
                 zero, zero, zero,
@@ -1448,11 +1486,12 @@ class SeqorthRouter(nn.Module):
                 balance_loss,
             )
 
+        hn_out = hn if hn is not None else intent
         return (
             routing_weights,
             topk_indices,
             None,
-            intent,
+            hn_out,
             zero, zero, zero,
             router_logits_out,
             zero, zero, zero,

@@ -46,7 +46,18 @@ from transformers.integrations.sdpa_attention import sdpa_attention_forward
 from transformers.utils.deprecation import deprecate_kwarg
 from .g2moe_config import G2MoEConfig
 
-from transformers.utils.import_utils import is_torch_fx_available
+try:
+    from transformers.utils.import_utils import is_torch_fx_available
+except ImportError:
+    try:
+        from transformers.utils import is_torch_fx_available
+    except ImportError:
+        def is_torch_fx_available():
+            try:
+                import torch.fx
+                return True
+            except ImportError:
+                return False
 
 from einops import rearrange
 from flash_attn.layers.rotary import RotaryEmbedding as FlashRotaryEmbedding

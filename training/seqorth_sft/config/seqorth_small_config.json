@@ -52,8 +52,14 @@
       "speciality_loss_coef": 5e-3,
       "contrastive_loss_coef": 1e-6,
       "expression_reg_loss_coef": 1.0,
-      "ortho_loss_coef": 1e-2,
-      "router_impl": "seqorth"
+      "router_impl": "seqorth",
+      "routed_scaling_factor": 1.0,
+      "spechorn_bias_scale": 8.0,
+      "spechorn_cap_penalty_scale": 15.0,
+      "spechorn_ortho_scale": 0.4,
+      "spechorn_sinkhorn_eps": 0.05,
+      "spechorn_sinkhorn_iter": 4,
+      "spechorn_spec_update_every": 16
     }
   },
   "_meta": {
